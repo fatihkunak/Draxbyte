@@ -34,8 +34,8 @@ issued through SignPath Foundation would give the exe a publisher identity Windo
 ## Build process (SignPath requires an automated build from the repository)
 
 - Source and build scripts are in the public repository; there are no binary dependencies checked in.
-- `.github/workflows/ci.yml` builds and tests on a GitHub-hosted `windows-latest` runner
-  (`cargo fmt --check`, `cargo clippy`, `cargo test --locked`, `cargo build --release --locked`).
+- `docs/signpath/ci.yml.example` is the CI workflow (GitHub-hosted `windows-latest`: `cargo fmt --check`, `cargo clippy`,
+  `cargo test --locked`, `cargo build --release --locked`). **It is not active yet** — see the blocker below.
 - `docs/signpath/release.yml.example` is the release workflow that will be enabled after approval: it builds the
   tagged commit on GitHub Actions, uploads the unsigned exe as an artifact, submits it to SignPath with
   `signpath/github-action-submit-signing-request` (manual approval of every release), and publishes the signed exe
@@ -77,6 +77,10 @@ Bin. It contains no hacking, scanning or vulnerability tools.
 - SignPath Foundation checks that **executables have a verifiable reputation**. Draxbyte is brand new (first release
   2026-10-17, no stars or third-party users yet), so an application today may be declined or deferred. It is cheap to
   try, but expect that answer. Growing real usage first (stars, issues, mentions, downloads) makes it much more likely.
+- **Blocker: GitHub Actions does not run on the account right now.** The first CI run (2026-10-17) was refused with
+  "The job was not started because your account is locked due to a billing issue." SignPath requires an automated,
+  traceable build, so this must be resolved (GitHub account billing) before applying. Until then the CI file stays as an example so
+  the repository does not show failing runs.
 - The release workflow needs GitHub Actions + SignPath's GitHub integration. SignPath's pages describe it as the
   supported route, but check the current terms when applying.
 - After approval, SignPath requires a **"Code signing policy"** statement on the home page and download/release

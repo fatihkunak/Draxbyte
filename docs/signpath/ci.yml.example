@@ -1,3 +1,6 @@
+# CI workflow for Draxbyte. Move to .github/workflows/ci.yml once GitHub Actions can run on the account
+# (as of 2026-10-17 jobs are refused with "account is locked due to a billing issue").
+
 name: CI
 
 on:

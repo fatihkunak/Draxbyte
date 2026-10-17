@@ -716,7 +716,6 @@ dependencies = [
  "sha2",
  "sysinfo",
  "tempfile",
- "thiserror 2.0.21",
  "tokio",
  "toml",
  "tracing",

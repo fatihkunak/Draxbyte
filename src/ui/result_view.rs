@@ -4,7 +4,9 @@ use super::widgets::{card, category_color, danger_button, heading, primary_butto
 use super::{ACCENT, DANGER, MUTED, WARN};
 use crate::app::{AiNote, App, Confirm, SortKey, View};
 use draxbyte::core::cleaner::CleanOptions;
+use draxbyte::i18n::t;
 use draxbyte::models::{human_bytes, now_secs, Category, Outcome};
+use draxbyte::tf;
 use egui::{Align, Layout, RichText};
 use egui_extras::{Column, TableBuilder};
 use std::sync::atomic::Ordering::Relaxed;
@@ -20,16 +22,19 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
     }
     heading(
         ui,
-        "Sonuçlar",
-        "Kutuları işaretle; hiçbir şey onay ekranından önce silinmez.",
+        t("Sonuçlar", "Results"),
+        t(
+            "Kutuları işaretle; hiçbir şey onay ekranından önce silinmez.",
+            "Tick the boxes; nothing is deleted before the confirmation screen.",
+        ),
     );
 
     ui.horizontal_wrapped(|ui| {
         for (label, cat) in [
-            ("Tümü", None),
-            ("Güvenli", Some(Category::Green)),
-            ("Dikkat", Some(Category::Yellow)),
-            ("Silme", Some(Category::Red)),
+            (t("Tümü", "All"), None),
+            (t("Güvenli", "Safe"), Some(Category::Green)),
+            (t("Dikkat", "Careful"), Some(Category::Yellow)),
+            (t("Silme", "Keep"), Some(Category::Red)),
         ] {
             if ui.selectable_label(app.filter_cat == cat, label).clicked() {
                 app.filter_cat = cat;
@@ -39,7 +44,7 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
         if ui
             .add(
                 egui::TextEdit::singleline(&mut app.filter_text)
-                    .hint_text("Yolda ara")
+                    .hint_text(t("Yolda ara", "Search path"))
                     .desired_width(180.0),
             )
             .changed()
@@ -47,14 +52,17 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
             app.view_dirty = true;
         }
         ui.separator();
-        if ui.button("Tüm yeşilleri seç").clicked() {
+        if ui
+            .button(t("Tüm yeşilleri seç", "Select all green"))
+            .clicked()
+        {
             app.select_category(Category::Green);
         }
-        if ui.button("Sarıları incele").clicked() {
+        if ui.button(t("Sarıları incele", "Review yellow")).clicked() {
             app.filter_cat = Some(Category::Yellow);
             app.view_dirty = true;
         }
-        if ui.button("Seçimi temizle").clicked() {
+        if ui.button(t("Seçimi temizle", "Clear selection")).clicked() {
             app.rows.iter_mut().for_each(|r| r.selected = false);
         }
     });
@@ -69,8 +77,9 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new(format!(
+                    RichText::new(tf!(
                         "{sel_count} öğe seçili · {}",
+                        "{sel_count} selected · {}",
                         human_bytes(sel_bytes)
                     ))
                     .strong(),
@@ -78,7 +87,10 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let busy = app.scan.is_some() || app.clean_job.is_some();
                     if ui
-                        .add_enabled(sel_count > 0 && !busy, primary_button("Temizle…"))
+                        .add_enabled(
+                            sel_count > 0 && !busy,
+                            primary_button(t("Temizle…", "Clean…")),
+                        )
                         .clicked()
                     {
                         app.confirm = Some(Confirm {
@@ -92,7 +104,10 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
         });
 
     if app.rows.is_empty() {
-        ui.label("Gösterilecek sonuç yok. Ana sayfadan bir tarama başlat.");
+        ui.label(t(
+            "Gösterilecek sonuç yok. Ana sayfadan bir tarama başlat.",
+            "No results. Start a scan from Home.",
+        ));
         return;
     }
 
@@ -103,7 +118,7 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
     let ai_tip = app
         .ai_error
         .clone()
-        .unwrap_or_else(|| "AI kapalı (Ayarlar → AI)".into());
+        .unwrap_or_else(|| t("AI kapalı (Ayarlar → AI)", "AI is off (Settings → AI)").into());
 
     TableBuilder::new(ui)
         .striped(true)
@@ -144,13 +159,13 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
             };
             let cur = app.sort;
             h.col(|_| {});
-            sortable(&mut h, "Kategori", SortKey::Category, cur);
-            sortable(&mut h, "Boyut", SortKey::Size, cur);
-            sortable(&mut h, "Yaş", SortKey::Age, cur);
+            sortable(&mut h, t("Kategori", "Category"), SortKey::Category, cur);
+            sortable(&mut h, t("Boyut", "Size"), SortKey::Size, cur);
+            sortable(&mut h, t("Yaş", "Age"), SortKey::Age, cur);
             h.col(|ui| {
-                ui.label(RichText::new("Neden").strong());
+                ui.label(RichText::new(t("Neden", "Reason")).strong());
             });
-            sortable(&mut h, "Yol", SortKey::Path, cur);
+            sortable(&mut h, t("Yol", "Path"), SortKey::Path, cur);
             h.col(|ui| {
                 ui.label(RichText::new("AI").strong());
             });
@@ -182,12 +197,16 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
                     ui.label(if days > 20 * 365 {
                         "—".to_string()
                     } else {
-                        format!("{days} g")
+                        tf!("{days} g", "{days} d")
                     });
                 });
                 row.col(|ui| {
-                    ui.label(RichText::new(&r.item.reason).color(MUTED).small())
-                        .on_hover_text(&r.item.reason);
+                    ui.label(
+                        RichText::new(&draxbyte::i18n::rule_reason(&r.item.rule, &r.item.reason))
+                            .color(MUTED)
+                            .small(),
+                    )
+                    .on_hover_text(&draxbyte::i18n::rule_reason(&r.item.rule, &r.item.reason));
                 });
                 row.col(|ui| {
                     let p = r.item.path.to_string_lossy();
@@ -201,7 +220,11 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
                 });
                 row.col(|ui| match &r.ai {
                     Some(AiNote { text, cached }) => {
-                        let tag = if *cached { " (önbellek)" } else { "" };
+                        let tag = if *cached {
+                            t(" (önbellek)", " (cached)")
+                        } else {
+                            ""
+                        };
                         ui.add(
                             egui::Label::new(RichText::new(format!("{text}{tag}")).small())
                                 .truncate(),
@@ -210,11 +233,12 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
                     }
                     None => {
                         let hint = if r.item.unknown {
-                            "Belirsiz öğe — AI'ya sor"
+                            t("Belirsiz öğe — AI'ya sor", "Unclear item — ask AI")
                         } else {
-                            "AI'ya sor"
+                            t("AI'ya sor", "Ask AI")
                         };
-                        let btn = egui::Button::new(RichText::new("AI'ya Sor").small());
+                        let btn =
+                            egui::Button::new(RichText::new(t("AI'ya Sor", "Ask AI")).small());
                         let resp = ui.add_enabled(ai_on, btn);
                         if ai_on {
                             if resp.on_hover_text(hint).clicked() {
@@ -280,14 +304,26 @@ pub fn confirm_modal(app: &mut App, ctx: &egui::Context) {
     let modal = egui::Modal::new(egui::Id::unique("confirm_clean")).show(ctx, |ui| {
         ui.set_width(440.0);
         let c = app.confirm.as_mut().unwrap();
-        ui.label(RichText::new("Temizliği onayla").size(20.0).strong());
+        ui.label(
+            RichText::new(t("Temizliği onayla", "Confirm cleanup"))
+                .size(20.0)
+                .strong(),
+        );
         ui.add_space(6.0);
-        ui.label(RichText::new(format!("{n} öğe, {} silinecek", human_bytes(bytes))).size(16.0));
-        ui.label(RichText::new(format!("Yeşil: {}", human_bytes(green_b))).color(ACCENT));
+        ui.label(
+            RichText::new(tf!(
+                "{n} öğe, {} silinecek",
+                "{n} items, {} will be deleted",
+                human_bytes(bytes)
+            ))
+            .size(16.0),
+        );
+        ui.label(RichText::new(tf!("Yeşil: {}", "Green: {}", human_bytes(green_b))).color(ACCENT));
         if yellow_n > 0 {
             ui.label(
-                RichText::new(format!(
+                RichText::new(tf!(
                     "Dikkat (sarı): {yellow_n} öğe, {} — emin ol",
+                    "Careful (yellow): {yellow_n} items, {} — make sure",
                     human_bytes(yellow_b)
                 ))
                 .color(WARN),
@@ -296,38 +332,51 @@ pub fn confirm_modal(app: &mut App, ctx: &egui::Context) {
         ui.add_space(8.0);
         ui.checkbox(
             &mut c.dry_run,
-            "Kuru çalıştırma (hiçbir şey silme, sadece raporla)",
+            t(
+                "Kuru çalıştırma (hiçbir şey silme, sadece raporla)",
+                "Dry run (delete nothing, just report)",
+            ),
         );
         if !c.dry_run {
             ui.radio_value(
                 &mut c.permanent,
                 false,
-                "Çöp Kutusu'na taşı (geri alınabilir)",
+                t(
+                    "Çöp Kutusu'na taşı (geri alınabilir)",
+                    "Move to Recycle Bin (reversible)",
+                ),
             );
             ui.radio_value(
                 &mut c.permanent,
                 true,
-                RichText::new("Kalıcı sil (geri alınamaz)").color(DANGER),
+                RichText::new(t(
+                    "Kalıcı sil (geri alınamaz)",
+                    "Delete permanently (irreversible)",
+                ))
+                .color(DANGER),
             );
             if c.permanent && need_typed {
-                ui.label(RichText::new("Onaylamak için SIL yaz:").color(DANGER));
+                ui.label(
+                    RichText::new(t("Onaylamak için SIL yaz:", "Type DELETE to confirm:"))
+                        .color(DANGER),
+                );
                 ui.text_edit_singleline(&mut c.typed);
             }
         }
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            if ui.button("Vazgeç").clicked() {
+            if ui.button(t("Vazgeç", "Cancel")).clicked() {
                 cancel = true;
             }
             let permanent = !c.dry_run && c.permanent;
-            let ok = !(permanent && need_typed && c.typed.trim() != "SIL");
+            let ok = !(permanent && need_typed && c.typed.trim() != draxbyte::i18n::confirm_word());
             let btn = if permanent {
-                danger_button("Kalıcı sil")
+                danger_button(t("Kalıcı sil", "Delete permanently"))
             } else {
                 primary_button(if c.dry_run {
-                    "Kuru çalıştır"
+                    t("Kuru çalıştır", "Run dry run")
                 } else {
-                    "Çöpe taşı"
+                    t("Çöpe taşı", "Move to Bin")
                 })
             };
             if ui.add_enabled(ok, btn).clicked() {
@@ -362,10 +411,17 @@ pub fn ai_modal(app: &mut App, ctx: &egui::Context) {
     let mut cancel = false;
     let modal = egui::Modal::new(egui::Id::unique("ai_confirm")).show(ctx, |ui| {
         ui.set_width(460.0);
-        ui.label(RichText::new("AI'ya sor — onay").size(20.0).strong());
         ui.label(
-            RichText::new("Yalnızca aşağıdaki metin gönderilir (dosya içeriği değil):")
-                .color(MUTED),
+            RichText::new(t("AI'ya sor — onay", "Ask AI — approval"))
+                .size(20.0)
+                .strong(),
+        );
+        ui.label(
+            RichText::new(t(
+                "Yalnızca aşağıdaki metin gönderilir (dosya içeriği değil):",
+                "Only the text below is sent (not file contents):",
+            ))
+            .color(MUTED),
         );
         ui.add_space(4.0);
         egui::Frame::new()
@@ -376,18 +432,25 @@ pub fn ai_modal(app: &mut App, ctx: &egui::Context) {
                 ui.label(RichText::new(&prompt.user).monospace().small());
             });
         ui.add_space(4.0);
-        ui.label(format!(
-            "Tahmini maliyet: ~{est} token · bugün {used}/{limit}"
+        ui.label(tf!(
+            "Tahmini maliyet: ~{est} token · bugün {used}/{limit}",
+            "Estimated cost: ~{est} tokens · today {used}/{limit}"
         ));
         if used + est > limit {
-            ui.label(RichText::new("Günlük limit aşılır; istek reddedilir.").color(DANGER));
+            ui.label(
+                RichText::new(t(
+                    "Günlük limit aşılır; istek reddedilir.",
+                    "The daily limit would be exceeded; the request will be refused.",
+                ))
+                .color(DANGER),
+            );
         }
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if ui.button("Vazgeç").clicked() {
+            if ui.button(t("Vazgeç", "Cancel")).clicked() {
                 cancel = true;
             }
-            if ui.add(primary_button("Gönder")).clicked() {
+            if ui.add(primary_button(t("Gönder", "Send"))).clicked() {
                 send = true;
             }
         });
@@ -404,19 +467,23 @@ pub fn ai_modal(app: &mut App, ctx: &egui::Context) {
 }
 
 pub fn clean(app: &mut App, ui: &mut egui::Ui) {
-    heading(ui, "Temizlik", "");
+    heading(ui, t("Temizlik", "Cleanup"), "");
 
     if let Some(job) = &app.clean_job {
         let done = job.done.load(Relaxed);
         card(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("Temizleniyor…").size(18.0).strong());
+            ui.label(
+                RichText::new(t("Temizleniyor…", "Cleaning…"))
+                    .size(18.0)
+                    .strong(),
+            );
             ui.add(
                 egui::ProgressBar::new(done as f32 / job.total.max(1) as f32)
                     .text(format!("{done}/{}", job.total))
                     .fill(ACCENT),
             );
-            if ui.button("İptal").clicked() {
+            if ui.button(t("İptal", "Cancel")).clicked() {
                 job.cancel.store(true, Relaxed);
             }
         });
@@ -426,7 +493,10 @@ pub fn clean(app: &mut App, ui: &mut egui::Ui) {
     }
 
     let Some(rep) = &app.report else {
-        ui.label("Henüz temizlik yapılmadı. Sonuçlar ekranında öğe seçip “Temizle…” de.");
+        ui.label(t(
+            "Henüz temizlik yapılmadı. Sonuçlar ekranında öğe seçip “Temizle…” de.",
+            "No cleanup yet. Select items on the Results screen and press “Clean…”.",
+        ));
         return;
     };
     let trashed = rep.count(|o| *o == Outcome::Trashed);
@@ -436,25 +506,30 @@ pub fn clean(app: &mut App, ui: &mut egui::Ui) {
     let failed = rep.count(|o| matches!(o, Outcome::Failed(_)));
     ui.horizontal_wrapped(|ui| {
         let label = if rep.dry_run {
-            "Silinirdi (kuru çalıştırma)"
+            t("Silinirdi (kuru çalıştırma)", "Would delete (dry run)")
         } else {
-            "Açılan yer"
+            t("Açılan yer", "Space freed")
         };
         stat(ui, label, &human_bytes(rep.freed_bytes), ACCENT);
         stat(
             ui,
-            "Çöpe taşındı / silindi",
+            t("Çöpe taşındı / silindi", "Moved to Bin / deleted"),
             &format!("{trashed} / {deleted}"),
             ACCENT,
         );
         stat(
             ui,
-            "Atlandı / hata",
+            t("Atlandı / hata", "Skipped / errors"),
             &format!("{skipped} / {failed}"),
             if failed > 0 { DANGER } else { MUTED },
         );
         if rep.dry_run {
-            stat(ui, "Kuru çalıştırma", &format!("{dry} öğe"), WARN);
+            stat(
+                ui,
+                t("Kuru çalıştırma", "Dry run"),
+                &tf!("{dry} öğe", "{dry} items"),
+                WARN,
+            );
         }
     });
     ui.add_space(6.0);
@@ -464,30 +539,36 @@ pub fn clean(app: &mut App, ui: &mut egui::Ui) {
     let mut rescan = false;
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(can_undo, egui::Button::new("Geri al (Çöp Kutusu'ndan)"))
+            .add_enabled(
+                can_undo,
+                egui::Button::new(t("Geri al (Çöp Kutusu'ndan)", "Undo (from Recycle Bin)")),
+            )
             .clicked()
         {
             undo = true;
         }
-        if ui.add(primary_button("Yeniden tara")).clicked() {
+        if ui
+            .add(primary_button(t("Yeniden tara", "Rescan")))
+            .clicked()
+        {
             rescan = true;
         }
-        if ui.button("Sonuçlara dön").clicked() {
+        if ui.button(t("Sonuçlara dön", "Back to results")).clicked() {
             app.view = View::Results;
         }
     });
     ui.add_space(6.0);
-    ui.label(RichText::new("İşlem günlüğü").strong());
+    ui.label(RichText::new(t("İşlem günlüğü", "Operation log")).strong());
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             for e in &rep.entries {
                 let (txt, color) = match &e.outcome {
-                    Outcome::DryRun => ("silinirdi".to_string(), WARN),
-                    Outcome::Trashed => ("çöpe taşındı".to_string(), ACCENT),
-                    Outcome::Deleted => ("silindi".to_string(), ACCENT),
-                    Outcome::Skipped(m) => (format!("atlandı: {m}"), MUTED),
-                    Outcome::Failed(m) => (format!("HATA: {m}"), DANGER),
+                    Outcome::DryRun => (t("silinirdi", "would delete").to_string(), WARN),
+                    Outcome::Trashed => (t("çöpe taşındı", "moved to Bin").to_string(), ACCENT),
+                    Outcome::Deleted => (t("silindi", "deleted").to_string(), ACCENT),
+                    Outcome::Skipped(m) => (tf!("atlandı: {m}", "skipped: {m}"), MUTED),
+                    Outcome::Failed(m) => (tf!("HATA: {m}", "ERROR: {m}"), DANGER),
                 };
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(txt).color(color));

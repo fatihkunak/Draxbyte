@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <b>Türkçe</b> · <a href="README.en.md">English</a> · <a href="docs/KULLANIM.md">Kullanım kılavuzu</a> · <a href="docs/USAGE.md">User guide</a>
+</p>
+
+<p align="center">
   <a href="LICENSE"><img alt="Lisans: MIT" src="https://img.shields.io/badge/lisans-MIT-10B981"></a>
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2021-1A1D21">
   <img alt="Platform" src="https://img.shields.io/badge/Windows-test%20edildi-1A1D21">
@@ -30,6 +34,7 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
   istek senin onayınla gider, yanıtlar yerelde önbelleğe alınır ve günlük token limiti vardır.
 - **Güvenlik önce.** Sistem klasörleri, gizli anahtarlar, kilitli ve son 24 saatte değişmiş dosyalar asla silinmez.
 - **Tek küçük dosya.** `draxbyte.exe` ~16 MB, kurulum ya da çalışma zamanı gerekmez.
+- **İki dil.** Türkçe ve English; sistem diline göre otomatik, Ayarlar → *Dil / Language*'dan değiştirilebilir.
 
 ## Ekran görüntüleri
 
@@ -43,6 +48,11 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 > Görüntüler örnek (demo) klasörleriyle alındı; kişisel dosya içermez.
 
 ## Başlarken
+
+### Hazır exe indir (Windows)
+
+[En son sürümden](https://github.com/fatihkunak/Draxbyte/releases/latest) `draxbyte.exe` dosyasını indirip çalıştır.
+Windows uyarı gösterirse aşağıdaki *İmza ve SmartScreen* bölümüne bak.
 
 ### Kaynaktan derle (Windows)
 
@@ -139,6 +149,9 @@ safe_extensions = ["tmp", "log", "cache", "dmp", "old", "bak"]
 safe_age_days = 30
 large_file_mb = 500
 
+[ui]
+language = "auto"         # auto | tr | en
+
 [ai]
 enabled = false
 provider = "openai"
@@ -155,6 +168,14 @@ use_trash = true
 confirm_permanent_delete = true
 ```
 
+## İmza ve SmartScreen
+
+Sürüm exe'leri **kendinden imzalı** bir kod imzalama sertifikasıyla ("Fatih Kunak") imzalanır. Bu imza dosyanın
+imzalandıktan sonra **değiştirilmediğini** kanıtlar; ama Windows kendinden imzalı yayıncıya güvenmediği için
+SmartScreen yine de "Windows bilgisayarınızı korudu" diyebilir — **Ek bilgi → Yine de çalıştır** de. İndirdiğin dosyayı
+sürüm notundaki `SHA256` değeriyle doğrulayabilirsin. Açık sertifika: [`assets/draxbyte-codesign.cer`](assets/draxbyte-codesign.cer).
+Bir ikiliye güvenmek istemezsen kaynaktan derle (yukarıda).
+
 ## Platformlar
 
 Geliştirme ve test **Windows 11**'de yapıldı. Kod Linux ve macOS için de platforma duyarlı yazıldı (Çöp Kutusu,
@@ -168,12 +189,14 @@ cargo test                                          # birim testleri
 cargo test --test trash_roundtrip -- --ignored      # gerçek Çöp Kutusu turu (isteğe bağlı)
 $env:DRAXBYTE_LIVE_URL="http://localhost:8080/v1"; cargo test --test live_provider -- --ignored --nocapture
 cargo build --release                               # target\release\draxbyte.exe
+powershell -File scripts\release.ps1                # derle + imzala + sağlama toplamı
 python scripts\make_icon.py "<tasarım.png>"         # simgeyi yeniden üretir
 ```
 
 ```
 src/core/    tarayıcı, kural motoru, güvenlik, temizleyici   (ürünün kendisi)
 src/ai/      sağlayıcılar, istemci, önbellek, prompt         (isteğe bağlı)
+src/i18n.rs  Türkçe / English metinler
 src/ui/      egui ekranları      src/app.rs  durum + arka plan işleri
 docs/wiki/   mimari wiki (Obsidian uyumlu)   docs/KULLANIM.md  kullanım kılavuzu
 ```

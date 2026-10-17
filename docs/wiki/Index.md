@@ -23,6 +23,7 @@
 - [[TokenSavings]] — token tasarruf prensiplerinin tek sayfa özeti
 
 ## 🖥️ Arayüz
+- [[I18n]] — Türkçe/English metin altyapısı (`t`, `tf!`), otomatik dil, kural gerekçesi çevirisi
 - [[App]] — uygulama durumu, arka plan işleri (thread + tokio), kanal polling
 - [[Ui]] — egui görünümleri: Ana Sayfa, Tarama, Sonuçlar, Temizlik, AI Önbelleği, Ayarlar
 - [[Cli]] — `scan` / `clean` başsız mod (clean varsayılan kuru çalıştırma)

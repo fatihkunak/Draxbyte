@@ -30,7 +30,7 @@ pub fn clean(
             report.entries.push(CleanEntry {
                 path: item.path.clone(),
                 size: item.size,
-                outcome: Outcome::Skipped("iptal edildi".into()),
+                outcome: Outcome::Skipped(crate::i18n::t("iptal edildi", "cancelled").into()),
             });
             continue;
         }
@@ -98,7 +98,13 @@ pub fn undo(report: &CleanReport) -> anyhow::Result<usize> {
 
 #[cfg(target_os = "macos")]
 pub fn undo(_report: &CleanReport) -> anyhow::Result<usize> {
-    anyhow::bail!("macOS'ta geri alma desteklenmiyor; dosyaları Çöp Kutusu'ndan elle geri al")
+    anyhow::bail!(
+        "{}",
+        crate::i18n::t(
+            "macOS'ta geri alma desteklenmiyor; dosyaları Çöp Kutusu'ndan elle geri al",
+            "Undo is not supported on macOS; restore the files from the Trash by hand"
+        )
+    )
 }
 
 #[cfg(test)]

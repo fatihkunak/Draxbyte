@@ -8,6 +8,8 @@
 use crate::ai::error::AiError;
 use crate::ai::prompt::{Prompt, MAX_TOKENS};
 use crate::config::AiConfig;
+use crate::i18n::t;
+use crate::tf;
 use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,10 +30,10 @@ pub enum Group {
 impl Group {
     pub fn label(self) -> &'static str {
         match self {
-            Group::Local => "Yerel (ücretsiz, anahtarsız)",
-            Group::FreeTier => "Ücretsiz katmanı olanlar",
-            Group::Paid => "Ücretli",
-            Group::Other => "Diğer",
+            Group::Local => crate::i18n::t("Yerel (ücretsiz, anahtarsız)", "Local (free, no key)"),
+            Group::FreeTier => crate::i18n::t("Ücretsiz katmanı olanlar", "With a free tier"),
+            Group::Paid => crate::i18n::t("Ücretli", "Paid"),
+            Group::Other => crate::i18n::t("Diğer", "Other"),
         }
     }
 }
@@ -221,6 +223,19 @@ pub fn get(id: &str) -> Option<&'static ProviderInfo> {
 }
 
 impl ProviderInfo {
+    /// Label in the current language (only a few providers have a translated name).
+    pub fn display_label(&self) -> &'static str {
+        match self.id {
+            "ollama" => crate::i18n::t("Ollama (yerel)", "Ollama (local)"),
+            "lmstudio" => crate::i18n::t("LM Studio (yerel)", "LM Studio (local)"),
+            "custom" => crate::i18n::t(
+                "OpenAI uyumlu (özel adres)",
+                "OpenAI-compatible (custom URL)",
+            ),
+            _ => self.label,
+        }
+    }
+
     /// The user may override/enter the address for these.
     pub fn base_url_editable(&self) -> bool {
         self.base_url.is_none() || self.group == Group::Local
@@ -243,10 +258,14 @@ fn is_loopback(host: &str) -> bool {
 /// Keys must never travel in clear text: https, except for loopback and local-group servers.
 fn validate_base_url(raw: &str, info: &ProviderInfo) -> Result<(), AiError> {
     let u = reqwest::Url::parse(raw)
-        .map_err(|_| AiError::BadBaseUrl("geçerli bir URL değil".into()))?;
+        .map_err(|_| AiError::BadBaseUrl(t("geçerli bir URL değil", "not a valid URL").into()))?;
     if !u.username().is_empty() || u.password().is_some() {
         return Err(AiError::BadBaseUrl(
-            "URL içinde kullanıcı/parola olamaz".into(),
+            t(
+                "URL içinde kullanıcı/parola olamaz",
+                "the URL must not contain a user name or password",
+            )
+            .into(),
         ));
     }
     let host = u.host_str().unwrap_or("");
@@ -254,9 +273,16 @@ fn validate_base_url(raw: &str, info: &ProviderInfo) -> Result<(), AiError> {
         "https" => Ok(()),
         "http" if is_loopback(host) || info.group == Group::Local => Ok(()),
         "http" => Err(AiError::BadBaseUrl(
-            "http yalnızca yerel sunucular için; https kullan".into(),
+            t(
+                "http yalnızca yerel sunucular için; https kullan",
+                "http is only for local servers; use https",
+            )
+            .into(),
         )),
-        other => Err(AiError::BadBaseUrl(format!("desteklenmeyen şema: {other}"))),
+        other => Err(AiError::BadBaseUrl(tf!(
+            "desteklenmeyen şema: {other}",
+            "unsupported scheme: {other}"
+        ))),
     }
 }
 
@@ -274,7 +300,11 @@ pub fn resolve(cfg: &AiConfig) -> Result<Creds, AiError> {
     };
     if base_url.is_empty() {
         return Err(AiError::BadBaseUrl(
-            "bu sağlayıcı için adres gerekli".into(),
+            t(
+                "bu sağlayıcı için adres gerekli",
+                "this provider needs an address",
+            )
+            .into(),
         ));
     }
     validate_base_url(&base_url, info)?;

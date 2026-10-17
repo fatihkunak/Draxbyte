@@ -34,9 +34,9 @@ impl Category {
 
     pub fn label(self) -> &'static str {
         match self {
-            Category::Green => "Güvenli",
-            Category::Yellow => "Dikkat",
-            Category::Red => "Silme",
+            Category::Green => crate::i18n::t("Güvenli", "Safe"),
+            Category::Yellow => crate::i18n::t("Dikkat", "Careful"),
+            Category::Red => crate::i18n::t("Silme", "Keep"),
         }
     }
 }
@@ -70,15 +70,15 @@ impl Kind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Kind::Video => "Videolar",
-            Kind::Image => "Resimler",
-            Kind::Audio => "Müzik",
-            Kind::Document => "Belgeler",
-            Kind::Archive => "Arşiv / kurulum",
-            Kind::Developer => "Geliştirici çıktısı",
-            Kind::Cache => "Önbellek / geçici",
-            Kind::VmDisk => "Sanal diskler",
-            Kind::Other => "Diğer",
+            Kind::Video => crate::i18n::t("Videolar", "Videos"),
+            Kind::Image => crate::i18n::t("Resimler", "Images"),
+            Kind::Audio => crate::i18n::t("Müzik", "Music"),
+            Kind::Document => crate::i18n::t("Belgeler", "Documents"),
+            Kind::Archive => crate::i18n::t("Arşiv / kurulum", "Archives"),
+            Kind::Developer => crate::i18n::t("Derleme çıktısı", "Build output"),
+            Kind::Cache => crate::i18n::t("Önbellek / geçici", "Cache / temp"),
+            Kind::VmDisk => crate::i18n::t("Sanal diskler", "Virtual disks"),
+            Kind::Other => crate::i18n::t("Diğer", "Other"),
         }
     }
 }

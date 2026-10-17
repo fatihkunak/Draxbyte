@@ -1,6 +1,6 @@
 # Draxbyte Kullanım Kılavuzu
 
-Bu kılavuz Draxbyte'ı ilk kez açan birinin ihtiyaç duyacağı her şeyi sırayla anlatır.
+Bu kılavuz Draxbyte'ı ilk kez açan birinin ihtiyaç duyacağı her şeyi sırayla anlatır. (English: [USAGE.md](USAGE.md))
 
 ## İçindekiler
 1. [Kurulum ve açılış](#1-kurulum-ve-açılış)
@@ -17,6 +17,11 @@ Bu kılavuz Draxbyte'ı ilk kez açan birinin ihtiyaç duyacağı her şeyi sır
 ---
 
 ## 1. Kurulum ve açılış
+
+**Hazır exe:** [En son sürümden](https://github.com/fatihkunak/Draxbyte/releases/latest) `draxbyte.exe` indirip çift tıkla.
+(Kendinden imzalı yayıncı nedeniyle Windows SmartScreen uyarısı çıkabilir: *Ek bilgi → Yine de çalıştır*.)
+
+**Ya da kaynaktan:**
 
 ```powershell
 git clone https://github.com/fatihkunak/Draxbyte.git
@@ -40,7 +45,7 @@ Sol menüden gezilir:
 | **Sonuçlar** | Bulunan her şeyin listesi; seçme, filtreleme, sıralama |
 | **Temizlik** | Son temizliğin raporu ve **Geri al** |
 | **AI Önbelleği** | Önbellek istatistikleri ve günlük token kullanımı (AI açıkken) |
-| **Ayarlar** | Tarama, kurallar, AI ve temizlik ayarları |
+| **Ayarlar** | Dil, tarama, kurallar, AI ve temizlik ayarları |
 | **Hakkında** | Sürüm, geliştirici, veri klasörü, lisanslar |
 
 Sol alttaki yazı AI durumunu gösterir: *"AI kapalı · ağ isteği yok"* ya da *"AI açık (her istek onaylı)"*.
@@ -145,6 +150,7 @@ görürsün. Günlük limit dolarsa AI o gün için kapanır.
 
 | Bölüm | Alan | Açıklama |
 |---|---|---|
+| Dil | Dil / Language | Otomatik (sistem dili), Türkçe, English. Hemen uygulanır; **Kaydet** kalıcı yapar |
 | Tarama | Varsayılan yollar | Her satır bir yol |
 | | Hariç tutulan desenler | Ör. `*.git/*` — bu yollara girilmez |
 | | Maks. derinlik / Min. boyut | Çok derine inme / küçük öğeleri gösterme |

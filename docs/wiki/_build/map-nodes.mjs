@@ -10,6 +10,7 @@ const map = {
   Safety: ['src/core/safety.rs'],
   Cleaner: ['src/core/cleaner.rs', 'tests/trash_roundtrip.rs'],
   Models: ['src/models.rs'],
+  I18n: ['src/i18n.rs'],
   Config: ['src/config.rs'],
   Db: ['src/db.rs'],
   AiClient: ['src/ai/client.rs'],

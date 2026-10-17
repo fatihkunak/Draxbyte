@@ -6,7 +6,9 @@ use super::widgets::{
 };
 use super::{ACCENT, BLUE, MUTED, WARN};
 use crate::app::{App, Confirm, SortKey, View};
+use draxbyte::i18n::t;
 use draxbyte::models::{human_bytes, now_secs, Category, Kind};
+use draxbyte::tf;
 use egui::RichText;
 use egui_extras::{Size, StripBuilder};
 use std::sync::atomic::Ordering::Relaxed;
@@ -14,10 +16,10 @@ use std::sync::atomic::Ordering::Relaxed;
 fn ago(ts: i64) -> String {
     let d = (now_secs() - ts).max(0);
     match d {
-        0..=59 => "az önce".into(),
-        60..=3599 => format!("{} dk önce", d / 60),
-        3600..=86_399 => format!("{} saat önce", d / 3600),
-        _ => format!("{} gün önce", d / 86_400),
+        0..=59 => t("az önce", "just now").into(),
+        60..=3599 => tf!("{} dk önce", "{} min ago", d / 60),
+        3600..=86_399 => tf!("{} saat önce", "{} h ago", d / 3600),
+        _ => tf!("{} gün önce", "{} days ago", d / 86_400),
     }
 }
 
@@ -57,25 +59,25 @@ fn hero(app: &mut App, ui: &mut egui::Ui) {
         StripBuilder::new(ui).size(Size::remainder()).size(Size::exact(430.0)).horizontal(|mut strip| {
             strip.cell(|ui| {
                 ui.add_space(6.0);
-                ui.label(RichText::new("Depolama alanınızı geri kazanın.").font(super::bold(30.0)));
+                ui.label(RichText::new(t("Depolama alanınızı geri kazanın.", "Reclaim your storage.")).font(super::bold(30.0)));
                 ui.add_space(4.0);
-                ui.label(RichText::new("Draxbyte diski yerelde tarar, büyük ve gereksiz dosyaları bulur; hiçbir şeyi onayın olmadan silmez. Yapay zekâ kapalıyken hiçbir ağ isteği atılmaz.").color(MUTED));
+                ui.label(RichText::new(t("Draxbyte diski yerelde tarar, büyük ve gereksiz dosyaları bulur; hiçbir şeyi onayın olmadan silmez. Yapay zekâ kapalıyken hiçbir ağ isteği atılmaz.", "Draxbyte scans your disk locally, finds large and useless files, and never deletes anything without your approval. While AI is off, no network request is ever made.")).color(MUTED));
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     let busy = app.scan.is_some() || app.clean_job.is_some();
-                    if ui.add_enabled(!busy, primary_button("Hızlı tarama")).clicked() {
+                    if ui.add_enabled(!busy, primary_button(t("Hızlı tarama", "Quick scan"))).clicked() {
                         let ctx = ui.ctx().clone();
                         app.start_scan(&ctx);
                     }
-                    if ui.button("Detaylı analiz").clicked() {
+                    if ui.button(t("Detaylı analiz", "Detailed analysis")).clicked() {
                         app.view = View::Results;
                     }
                 });
                 ui.add_space(10.0);
-                ui.label(RichText::new("Taranacak yollar (; ile ayır)").color(MUTED).small());
+                ui.label(RichText::new(t("Taranacak yollar (; ile ayır)", "Paths to scan (separate with ;)")).color(MUTED).small());
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(&mut app.scan_paths_text).desired_width((ui.available_width() - 130.0).max(120.0)));
-                    if ui.button("Varsayılan").clicked() {
+                    if ui.button(t("Varsayılan", "Default")).clicked() {
                         app.scan_paths_text = app.cfg.scan.default_paths.join("; ");
                     }
                 });
@@ -85,14 +87,14 @@ fn hero(app: &mut App, ui: &mut egui::Ui) {
                     if let Some(d) = &app.disk {
                         let used = d.total.saturating_sub(d.free);
                         let frac = if d.total > 0 { used as f32 / d.total as f32 } else { 0.0 };
-                        ring(ui, 190.0, frac, ACCENT, &human_bytes(d.total), &format!("{} · %{:.0} dolu", d.name, frac * 100.0));
+                        ring(ui, 190.0, frac, ACCENT, &human_bytes(d.total), &tf!("{} · %{:.0} dolu", "{} · {:.0}% full", d.name, frac * 100.0));
                         ui.add_space(14.0);
                         ui.vertical(|ui| {
                             ui.add_space(52.0);
-                            ui.label(RichText::new("• Kullanılan").color(ACCENT));
+                            ui.label(RichText::new(t("• Kullanılan", "• Used")).color(ACCENT));
                             ui.label(RichText::new(human_bytes(used)).font(super::bold(17.0)));
                             ui.add_space(6.0);
-                            ui.label(RichText::new("• Boş alan").color(BLUE));
+                            ui.label(RichText::new(t("• Boş alan", "• Free")).color(BLUE));
                             ui.label(RichText::new(human_bytes(d.free)).font(super::bold(17.0)));
                         });
                     }
@@ -109,32 +111,38 @@ fn quick_actions(app: &mut App, ui: &mut egui::Ui) {
         if action_card(
             &mut c[0],
             Icon::Donut,
-            "Disk analizi",
-            "Bulunan her şeyi boyuta göre gör.",
+            t("Disk analizi", "Disk analysis"),
+            t(
+                "Bulunan her şeyi boyuta göre gör.",
+                "See everything found, by size.",
+            ),
         ) {
             act = Some(0);
         }
         if action_card(
             &mut c[1],
             Icon::Folder,
-            "Büyük dosyalar",
-            "Ne olduğu belirsiz büyük öğeler.",
+            t("Büyük dosyalar", "Large files"),
+            t(
+                "Ne olduğu belirsiz büyük öğeler.",
+                "Big items we can't identify.",
+            ),
         ) {
             act = Some(1);
         }
         if action_card(
             &mut c[2],
             Icon::Trash,
-            "Geçici dosyalar",
-            "Güvenle silinebilecekler.",
+            t("Geçici dosyalar", "Temporary files"),
+            t("Güvenle silinebilecekler.", "Safe to delete."),
         ) {
             act = Some(2);
         }
         if action_card(
             &mut c[3],
             Icon::Bolt,
-            "Sistem temizliği",
-            "Yeşilleri seç ve temizle.",
+            t("Sistem temizliği", "System cleanup"),
+            t("Yeşilleri seç ve temizle.", "Select the greens and clean."),
         ) {
             act = Some(3);
         }
@@ -172,10 +180,16 @@ fn top_files(app: &mut App, ui: &mut egui::Ui) {
         ui.set_width(ui.available_width());
         ui.set_min_height(262.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("En büyük temizlenebilir öğeler").font(super::bold(16.0)));
+            ui.label(
+                RichText::new(t(
+                    "En büyük temizlenebilir öğeler",
+                    "Largest cleanable items",
+                ))
+                .font(super::bold(16.0)),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .link(RichText::new("Tümünü gör →").color(ACCENT))
+                    .link(RichText::new(t("Tümünü gör →", "See all →")).color(ACCENT))
                     .clicked()
                 {
                     app.filter_cat = None;
@@ -193,7 +207,13 @@ fn top_files(app: &mut App, ui: &mut egui::Ui) {
             .collect();
         if top.is_empty() {
             ui.add_space(30.0);
-            ui.label(RichText::new("Henüz veri yok. “Hızlı tarama” ile başla.").color(MUTED));
+            ui.label(
+                RichText::new(t(
+                    "Henüz veri yok. “Hızlı tarama” ile başla.",
+                    "No data yet. Start with “Quick scan”.",
+                ))
+                .color(MUTED),
+            );
         }
         for r in top {
             let fname = r
@@ -253,18 +273,27 @@ fn distribution_card(app: &mut App, ui: &mut egui::Ui) {
     card(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.set_min_height(262.0);
-        ui.label(RichText::new("Temizlenebilir öğelerin dağılımı").font(super::bold(16.0)));
         ui.label(
-            RichText::new("Son taramada bulunanlar (kırmızılar hariç)")
-                .color(MUTED)
-                .small(),
+            RichText::new(t(
+                "Temizlenebilir öğelerin dağılımı",
+                "Cleanable items by type",
+            ))
+            .font(super::bold(16.0)),
+        );
+        ui.label(
+            RichText::new(t(
+                "Son taramada bulunanlar (kırmızılar hariç)",
+                "Found in the last scan (red excluded)",
+            ))
+            .color(MUTED)
+            .small(),
         );
         ui.add_space(8.0);
         let dist = distribution(app);
         let total: u64 = dist.iter().map(|(_, b)| *b).sum();
         if total == 0 {
             ui.add_space(30.0);
-            ui.label(RichText::new("Henüz veri yok.").color(MUTED));
+            ui.label(RichText::new(t("Henüz veri yok.", "No data yet.")).color(MUTED));
             return;
         }
         let narrow = ui.available_width() < 520.0;
@@ -278,7 +307,7 @@ fn distribution_card(app: &mut App, ui: &mut egui::Ui) {
                 if narrow { 130.0 } else { 180.0 },
                 &segs,
                 &human_bytes(total),
-                "toplam",
+                t("toplam", "total"),
             );
             ui.add_space(10.0);
             ui.vertical(|ui| {
@@ -287,7 +316,7 @@ fn distribution_card(app: &mut App, ui: &mut egui::Ui) {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("•").color(kind_color(*k)));
                         ui.add_sized(
-                            [if narrow { 104.0 } else { 128.0 }, 18.0],
+                            [if narrow { 112.0 } else { 150.0 }, 18.0],
                             egui::Label::new(k.label()).truncate(),
                         );
                         let (rect, _) = ui.allocate_exact_size(
@@ -299,8 +328,9 @@ fn distribution_card(app: &mut App, ui: &mut egui::Ui) {
                         fill.set_width((rect.width() * (*b as f32 / max)).max(3.0));
                         ui.painter().rect_filled(fill, 4.0, kind_color(*k));
                         ui.label(
-                            RichText::new(format!(
+                            RichText::new(tf!(
                                 "{}  %{:.0}",
+                                "{}  {:.0}%",
                                 human_bytes(*b),
                                 *b as f32 * 100.0 / total as f32
                             ))
@@ -326,9 +356,10 @@ fn last_scan(app: &mut App, ui: &mut egui::Ui) {
     ui.columns(3, |cols| {
         stat_fill(
             &mut cols[0],
-            "Güvenli (yeşil)",
-            &format!(
+            t("Güvenli (yeşil)", "Safe (green)"),
+            &tf!(
                 "{} · {} öğe",
+                "{} · {} items",
                 human_bytes(sum(Category::Green)),
                 count(Category::Green)
             ),
@@ -336,9 +367,10 @@ fn last_scan(app: &mut App, ui: &mut egui::Ui) {
         );
         stat_fill(
             &mut cols[1],
-            "Dikkat (sarı)",
-            &format!(
+            t("Dikkat (sarı)", "Careful (yellow)"),
+            &tf!(
                 "{} · {} öğe",
+                "{} · {} items",
                 human_bytes(sum(Category::Yellow)),
                 count(Category::Yellow)
             ),
@@ -346,9 +378,10 @@ fn last_scan(app: &mut App, ui: &mut egui::Ui) {
         );
         stat_fill(
             &mut cols[2],
-            "Silme (kırmızı)",
-            &format!(
+            t("Silme (kırmızı)", "Keep (red)"),
+            &tf!(
                 "{} · {} öğe",
+                "{} · {} items",
                 human_bytes(sum(Category::Red)),
                 count(Category::Red)
             ),
@@ -361,23 +394,27 @@ fn last_scan(app: &mut App, ui: &mut egui::Ui) {
         match &app.last {
             Some(s) => {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Son tarama").font(super::bold(16.0)));
+                    ui.label(RichText::new(t("Son tarama", "Last scan")).font(super::bold(16.0)));
                     ui.label(RichText::new(ago(s.finished_at)).color(MUTED));
                 });
-                ui.label(format!(
+                ui.label(tf!(
                     "{} dosya gezildi · {} öğe ({}) · {} erişilemeyen",
+                    "{} files scanned · {} items ({}) · {} inaccessible",
                     s.files_visited,
                     s.item_count,
                     human_bytes(s.total_bytes),
                     s.errors
                 ));
                 ui.label(RichText::new(s.roots.join("   |   ")).color(MUTED).small());
-                if ui.button("Sonuçları gör").clicked() {
+                if ui.button(t("Sonuçları gör", "View results")).clicked() {
                     app.view = View::Results;
                 }
             }
             None => {
-                ui.label("Henüz tarama yok. “Hızlı tarama” ile başla.");
+                ui.label(t(
+                    "Henüz tarama yok. “Hızlı tarama” ile başla.",
+                    "No scan yet. Start with “Quick scan”.",
+                ));
             }
         }
     });
@@ -386,12 +423,18 @@ fn last_scan(app: &mut App, ui: &mut egui::Ui) {
 pub fn progress(app: &mut App, ui: &mut egui::Ui) {
     heading(
         ui,
-        "Tarama",
-        "Dosyalar yerelde taranıyor; hiçbir şey silinmez.",
+        t("Tarama", "Scan"),
+        t(
+            "Dosyalar yerelde taranıyor; hiçbir şey silinmez.",
+            "Files are scanned locally; nothing is deleted.",
+        ),
     );
     let Some(job) = &app.scan else {
-        ui.label("Çalışan tarama yok.");
-        if ui.add(primary_button("Ana sayfaya dön")).clicked() {
+        ui.label(t("Çalışan tarama yok.", "No scan is running."));
+        if ui
+            .add(primary_button(t("Ana sayfaya dön", "Back to Home")))
+            .clicked()
+        {
             app.view = View::Home;
         }
         return;
@@ -415,23 +458,23 @@ pub fn progress(app: &mut App, ui: &mut egui::Ui) {
             ui.add(egui::Spinner::new().size(28.0).color(ACCENT));
             ui.label(
                 RichText::new(if cancelling {
-                    "İptal ediliyor…"
+                    t("İptal ediliyor…", "Cancelling…")
                 } else {
-                    "Taranıyor…"
+                    t("Taranıyor…", "Scanning…")
                 })
                 .size(18.0)
                 .strong(),
             );
         });
         ui.add_space(8.0);
-        ui.label(format!(
-            "{files} dosya · {} gezildi · {found} aday öğe · {errors} erişilemeyen · {secs:.0} sn",
+        ui.label(tf!(
+            "{files} dosya · {} gezildi · {found} aday öğe · {errors} erişilemeyen · {secs:.0} sn", "{files} files · {} scanned · {found} candidate items · {errors} inaccessible · {secs:.0} s",
             human_bytes(bytes)
         ));
         ui.label(RichText::new(current).color(MUTED).small());
         ui.add_space(8.0);
         if ui
-            .add_enabled(!cancelling, egui::Button::new("İptal"))
+            .add_enabled(!cancelling, egui::Button::new(t("İptal", "Cancel")))
             .clicked()
         {
             app.cancel_scan();

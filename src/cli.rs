@@ -5,7 +5,9 @@ use clap::{Parser, Subcommand};
 use draxbyte::config::Config;
 use draxbyte::core::cleaner::{self, CleanOptions};
 use draxbyte::core::scanner::{self, Progress, ScanOptions};
+use draxbyte::i18n::t;
 use draxbyte::models::{human_bytes, Category, Outcome, ScanItem};
+use draxbyte::tf;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -55,20 +57,28 @@ pub enum Cmd {
 fn run_scan(cfg: &Config, paths: Vec<PathBuf>) -> scanner::ScanOutput {
     let opts = ScanOptions::from_config(cfg, (!paths.is_empty()).then_some(paths));
     eprintln!(
-        "Taranıyor: {}",
-        opts.roots
-            .iter()
-            .map(|r| r.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
+        "{}",
+        tf!(
+            "Taranıyor: {}",
+            "Scanning: {}",
+            opts.roots
+                .iter()
+                .map(|r| r.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     );
     let out = scanner::scan(&opts, &AtomicBool::new(false), &Progress::default());
     eprintln!(
-        "{} öğe bulundu ({}), {} dosya gezildi, {} hata",
-        out.summary.item_count,
-        human_bytes(out.summary.total_bytes),
-        out.summary.files_visited,
-        out.summary.errors
+        "{}",
+        tf!(
+            "{} öğe bulundu ({}), {} dosya gezildi, {} hata",
+            "{} items found ({}), {} files scanned, {} errors",
+            out.summary.item_count,
+            human_bytes(out.summary.total_bytes),
+            out.summary.files_visited,
+            out.summary.errors
+        )
     );
     out
 }
@@ -82,13 +92,23 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                 let mut db =
                     draxbyte::db::Db::open(&draxbyte::config::data_dir().join("draxbyte.db"))?;
                 db.save_session(&out.summary, &out.items)?;
-                eprintln!("Tarama kaydedildi (GUI'de son tarama olarak görünür)");
+                eprintln!(
+                    "{}",
+                    t(
+                        "Tarama kaydedildi (GUI'de son tarama olarak görünür)",
+                        "Scan saved (shown as the last scan in the GUI)"
+                    )
+                );
             }
             let items = out.items;
             let now = draxbyte::models::now_secs();
             println!(
-                "{:<8} {:>10} {:>6}  {:<16} YOL",
-                "KATEGORİ", "BOYUT", "YAŞ(g)", "KURAL"
+                "{:<8} {:>10} {:>6}  {:<16} {}",
+                t("KATEGORİ", "CATEGORY"),
+                t("BOYUT", "SIZE"),
+                t("YAŞ(g)", "AGE(d)"),
+                t("KURAL", "RULE"),
+                t("YOL", "PATH")
             );
             for i in items.iter().take(limit) {
                 println!(
@@ -101,7 +121,10 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                 );
             }
             if items.len() > limit {
-                println!("... ve {} öğe daha", items.len() - limit);
+                println!(
+                    "{}",
+                    tf!("... ve {} öğe daha", "... and {} more", items.len() - limit)
+                );
             }
             Ok(())
         }
@@ -120,22 +143,32 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                 .collect();
             let total: u64 = items.iter().map(|i| i.size).sum();
             println!(
-                "{} öğe, {} {}",
-                items.len(),
-                human_bytes(total),
+                "{} {}",
+                tf!(
+                    "{} öğe, {}",
+                    "{} items, {}",
+                    items.len(),
+                    human_bytes(total)
+                ),
                 if apply {
-                    "silinecek"
+                    t("silinecek", "to be removed")
                 } else {
-                    "(kuru çalıştırma)"
+                    t("(kuru çalıştırma)", "(dry run)")
                 }
             );
             if permanent {
-                print!("KALICI silme. Onaylamak için SIL yaz: ");
+                print!(
+                    "{}",
+                    tf!(
+                        "KALICI silme. Onaylamak için SIL yaz: ",
+                        "PERMANENT delete. Type DELETE to confirm: "
+                    )
+                );
                 std::io::stdout().flush()?;
                 let mut s = String::new();
                 std::io::stdin().read_line(&mut s)?;
-                if s.trim() != "SIL" {
-                    bail!("iptal edildi");
+                if s.trim() != draxbyte::i18n::confirm_word() {
+                    bail!("{}", t("iptal edildi", "cancelled"));
                 }
             }
             let report = cleaner::clean(
@@ -149,11 +182,11 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
             );
             for e in &report.entries {
                 let tag = match &e.outcome {
-                    Outcome::DryRun => "silinirdi".to_string(),
-                    Outcome::Trashed => "çöpe taşındı".to_string(),
-                    Outcome::Deleted => "silindi".to_string(),
-                    Outcome::Skipped(m) => format!("atlandı ({m})"),
-                    Outcome::Failed(m) => format!("HATA ({m})"),
+                    Outcome::DryRun => t("silinirdi", "would delete").to_string(),
+                    Outcome::Trashed => t("çöpe taşındı", "moved to Bin").to_string(),
+                    Outcome::Deleted => t("silindi", "deleted").to_string(),
+                    Outcome::Skipped(m) => tf!("atlandı ({m})", "skipped ({m})"),
+                    Outcome::Failed(m) => tf!("HATA ({m})", "ERROR ({m})"),
                 };
                 println!(
                     "{:>10}  {:<24} {}",
@@ -162,7 +195,10 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                     e.path.display()
                 );
             }
-            println!("Toplam: {}", human_bytes(report.freed_bytes));
+            println!(
+                "{}",
+                tf!("Toplam: {}", "Total: {}", human_bytes(report.freed_bytes))
+            );
             Ok(())
         }
     }

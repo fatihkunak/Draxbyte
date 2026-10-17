@@ -15,3 +15,6 @@
 - **Test isteği sayaca işlenir** (~30 token) — "Bağlantıyı test et" sınırı atlatma yolu olmasın.
 - **Inter Regular + SemiBold** gömüldü (~830 KB, OFL; lisans `assets/fonts/Inter-LICENSE.txt`). Değişken font reddedildi (egui'de ağırlık seçilemez).
 - **Simge konsept sayfasından türetildi** (renk maskesiyle izlenip vektör gibi yeniden çizildi), kafadan tasarlanmadı.
+- **Çift dil: satır içi `t("TR","EN")`, dosya tabanlı sözlük değil (10-17).** Neden: iki dil, ~250 metin; anahtarsız yaklaşım çeviriyi çağrı yerinde tutar ve eksik çeviri derleme anında görünür (iki argüman zorunlu). Reddedilen: gettext/fluent (bağımlılık + tek-binary hedefine ağır). Kural gerekçeleri DB'de Türkçe saklanır ama UI kural kimliğinden çevirir.
+- **Dil otomatik algılanır** (Windows locale), `tr*` dışı her şey English. Reddedilen: sabit Türkçe — kamuya açık repoda İngilizce varsayılan daha doğru.
+- **İmza: kendinden imzalı sertifika (10-17).** Gerçek sertifika yok (OV/EV ücretli, kimlik doğrulama ister). Kendinden imzalı imza yalnız bütünlüğü kanıtlar, SmartScreen'i susturmaz; README bunu açıkça söyler. Özel anahtar yalnız kullanıcının Windows sertifika deposunda, depoya/çıktıya girmez; açık sertifika `assets/draxbyte-codesign.cer`. Sonraki adım olası: SignPath Foundation (açık kaynak projelere ücretsiz imza).

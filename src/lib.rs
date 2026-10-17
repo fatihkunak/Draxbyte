@@ -4,4 +4,5 @@ pub mod ai;
 pub mod config;
 pub mod core;
 pub mod db;
+pub mod i18n;
 pub mod models;

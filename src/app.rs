@@ -7,7 +7,9 @@ use draxbyte::config::{data_dir, expand_path, Config};
 use draxbyte::core::cleaner::{self, CleanOptions};
 use draxbyte::core::scanner::{self, Progress, ScanOptions, ScanOutput};
 use draxbyte::db::Db;
+use draxbyte::i18n::t;
 use draxbyte::models::{Category, CleanReport, Outcome, ScanItem, ScanSummary};
+use draxbyte::tf;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
@@ -240,7 +242,7 @@ impl App {
         }
         let paths = self.parsed_scan_paths();
         if paths.is_empty() {
-            self.toast("Taranacak yol yok");
+            self.toast(t("Taranacak yol yok", "No path to scan"));
             return;
         }
         let opts = ScanOptions::from_config(&self.cfg, Some(paths));
@@ -351,21 +353,27 @@ impl App {
     pub fn undo_last(&mut self) {
         let Some(rep) = &self.report else { return };
         match cleaner::undo(rep) {
-            Ok(0) => self.toast("Geri alınacak öğe bulunamadı (Çöp Kutusu boşaltılmış olabilir)"),
+            Ok(0) => self.toast(t(
+                "Geri alınacak öğe bulunamadı (Çöp Kutusu boşaltılmış olabilir)",
+                "Nothing to restore (the Recycle Bin may have been emptied)",
+            )),
             Ok(n) => {
-                self.toast(format!("{n} öğe Çöp Kutusu'ndan geri getirildi"));
+                self.toast(tf!(
+                    "{n} öğe Çöp Kutusu'ndan geri getirildi",
+                    "{n} item(s) restored from the Recycle Bin"
+                ));
                 if let Some(rep) = &mut self.report {
                     for e in rep
                         .entries
                         .iter_mut()
                         .filter(|e| e.outcome == Outcome::Trashed)
                     {
-                        e.outcome = Outcome::Skipped("geri alındı".into());
+                        e.outcome = Outcome::Skipped(t("geri alındı", "restored").into());
                     }
                     rep.freed_bytes = 0;
                 }
             }
-            Err(e) => self.toast(format!("Geri alma başarısız: {e}")),
+            Err(e) => self.toast(tf!("Geri alma başarısız: {e}", "Undo failed: {e}")),
         }
     }
 
@@ -436,7 +444,12 @@ impl App {
         self.rt.spawn(async move {
             let r = draxbyte::ai::providers::check(&creds)
                 .await
-                .map(|(ms, tok)| format!("Bağlantı tamam · {ms} ms · {tok} token"))
+                .map(|(ms, tok)| {
+                    tf!(
+                        "Bağlantı tamam · {ms} ms · {tok} token",
+                        "Connection OK · {ms} ms · {tok} tokens"
+                    )
+                })
                 .map_err(|e| e.to_string());
             let _ = tx.send(r);
             ctx.request_repaint();
@@ -476,7 +489,8 @@ impl App {
                 self.models_job = None;
                 match res {
                     Ok(list) => {
-                        self.test_status = Some((true, format!("{} model bulundu", list.len())));
+                        self.test_status =
+                            Some((true, tf!("{} model bulundu", "{} models found", list.len())));
                         self.models = list;
                     }
                     Err(e) => self.test_status = Some((false, e)),
@@ -538,7 +552,10 @@ impl App {
         self.disk = detect_disk();
         self.view = View::Results;
         if out.cancelled {
-            self.toast("Tarama iptal edildi (kısmi sonuçlar gösteriliyor, kaydedilmedi)");
+            self.toast(t(
+                "Tarama iptal edildi (kısmi sonuçlar gösteriliyor, kaydedilmedi)",
+                "Scan cancelled (showing partial results, not saved)",
+            ));
         }
     }
 }

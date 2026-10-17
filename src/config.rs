@@ -13,6 +13,7 @@ pub struct Config {
     pub rules: RulesConfig,
     pub ai: AiConfig,
     pub cleanup: CleanupConfig,
+    pub ui: UiConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +47,21 @@ pub struct AiConfig {
     pub daily_token_limit: u64,
     pub cache_enabled: bool,
     pub cache_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UiConfig {
+    /// `auto` (follow the system), `tr` or `en`.
+    pub language: String,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            language: "auto".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,9 +173,16 @@ impl Config {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let text = std::fs::read_to_string(path)
-            .with_context(|| format!("config okunamadı: {}", path.display()))?;
-        toml::from_str(&text).with_context(|| format!("config geçersiz: {}", path.display()))
+        let text = std::fs::read_to_string(path).with_context(|| {
+            crate::tf!(
+                "config okunamadı: {}",
+                "could not read config: {}",
+                path.display()
+            )
+        })?;
+        toml::from_str(&text).with_context(|| {
+            crate::tf!("config geçersiz: {}", "invalid config: {}", path.display())
+        })
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {

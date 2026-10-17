@@ -179,12 +179,18 @@ pub enum Skip {
 impl Skip {
     pub fn message(&self) -> &'static str {
         match self {
-            Skip::Protected => "korumalı yol",
-            Skip::RedCategory => "kırmızı kategori (silinemez)",
-            Skip::Missing => "artık yok",
-            Skip::Symlink => "sembolik bağ (takip edilmez)",
-            Skip::Locked => "dosya kilitli / kullanımda",
-            Skip::Changed => "taramadan sonra değişmiş",
+            Skip::Protected => crate::i18n::t("korumalı yol", "protected path"),
+            Skip::RedCategory => crate::i18n::t(
+                "kırmızı kategori (silinemez)",
+                "red category (cannot be deleted)",
+            ),
+            Skip::Missing => crate::i18n::t("artık yok", "no longer exists"),
+            Skip::Symlink => crate::i18n::t(
+                "sembolik bağ (takip edilmez)",
+                "symbolic link (not followed)",
+            ),
+            Skip::Locked => crate::i18n::t("dosya kilitli / kullanımda", "file is locked / in use"),
+            Skip::Changed => crate::i18n::t("taramadan sonra değişmiş", "changed since the scan"),
         }
     }
 }

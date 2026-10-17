@@ -25,6 +25,7 @@ fn main() -> Result<()> {
     let args = cli::Cli::parse();
     let cfg_path = args.config.clone().unwrap_or_else(default_config_path);
     let cfg = Config::load(&cfg_path)?;
+    draxbyte::i18n::set(draxbyte::i18n::resolve(&cfg.ui.language));
     if args.cmd.is_some() {
         return cli::run(args, cfg);
     }
@@ -47,5 +48,10 @@ fn main() -> Result<()> {
         options,
         Box::new(move |cc| Ok(Box::new(app::App::new(cc, cfg, cfg_path)))),
     )
-    .map_err(|e| anyhow::anyhow!("GUI başlatılamadı: {e}"))
+    .map_err(|e| {
+        anyhow::anyhow!(draxbyte::tf!(
+            "GUI başlatılamadı: {e}",
+            "could not start the GUI: {e}"
+        ))
+    })
 }

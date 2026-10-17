@@ -7,6 +7,7 @@ pub mod settings_view;
 pub mod widgets;
 
 use crate::app::{App, View};
+use draxbyte::i18n::t;
 use egui::{Color32, RichText};
 
 /// 256x256 RGBA of assets/icon.ico (rebuilt by scripts/make_icon.py).
@@ -108,15 +109,17 @@ pub fn apply_theme(ctx: &egui::Context) {
     });
 }
 
-const NAV: &[(View, &str)] = &[
-    (View::Home, "Ana Sayfa"),
-    (View::Scan, "Tarama"),
-    (View::Results, "Sonuçlar"),
-    (View::Clean, "Temizlik"),
-    (View::Cache, "AI Önbelleği"),
-    (View::Settings, "Ayarlar"),
-    (View::About, "Hakkında"),
-];
+fn nav() -> [(View, &'static str); 7] {
+    [
+        (View::Home, t("Ana Sayfa", "Home")),
+        (View::Scan, t("Tarama", "Scan")),
+        (View::Results, t("Sonuçlar", "Results")),
+        (View::Clean, t("Temizlik", "Cleanup")),
+        (View::Cache, t("AI Önbelleği", "AI cache")),
+        (View::Settings, t("Ayarlar", "Settings")),
+        (View::About, t("Hakkında", "About")),
+    ]
+}
 
 pub fn draw(app: &mut App, ui: &mut egui::Ui) {
     egui::Panel::left("sidebar")
@@ -153,10 +156,10 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
 fn sidebar(app: &mut App, ui: &mut egui::Ui) {
     widgets::logo(ui, &app.logo);
     ui.add_space(18.0);
-    for (view, label) in NAV {
-        let selected = app.view == *view;
-        let busy = (*view == View::Scan && app.scan.is_some())
-            || (*view == View::Clean && app.clean_job.is_some());
+    for (view, label) in nav() {
+        let selected = app.view == view;
+        let busy = (view == View::Scan && app.scan.is_some())
+            || (view == View::Clean && app.clean_job.is_some());
         let text = if busy {
             format!("{label}  •")
         } else {
@@ -172,7 +175,7 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
                 .stroke(egui::Stroke::NONE)
                 .min_size(egui::vec2(ui.available_width(), 36.0));
         if ui.add(btn).clicked() {
-            app.view = *view;
+            app.view = view;
         }
     }
     ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -182,16 +185,20 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
                 .size(13.0),
         );
         let ai = if app.ai.is_some() {
-            "AI açık (her istek onaylı)"
+            t("AI açık (her istek onaylı)", "AI on · you approve")
         } else {
-            "AI kapalı · ağ isteği yok"
+            t("AI kapalı · ağ isteği yok", "AI off · no network requests")
         };
         ui.label(
             RichText::new(ai)
                 .color(if app.ai.is_some() { WARN } else { ACCENT })
                 .size(13.0),
         );
-        ui.label(RichText::new("• Sistem durumu").color(ACCENT).size(13.0));
+        ui.label(
+            RichText::new(t("• Sistem durumu", "• System status"))
+                .color(ACCENT)
+                .size(13.0),
+        );
     });
 }
 

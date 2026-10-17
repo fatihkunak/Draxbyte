@@ -6,3 +6,4 @@
 - 2026-10-17 — Açık kaynak yayın hazırlığı: MIT lisansı, README + docs/KULLANIM.md, ekran görüntüleri (demo veriyle), DRAXBYTE_HOME (taşınabilir veri klasörü), varsayılan pencere 1280x800.
 - 2026-10-17 — Düzeltmeler: eframe `clipboard` özelliği açıldı (Ctrl+C/V/X, API anahtarı yapıştırma); Çöp Kutusu "Some operations were aborted" hatasında klasör çocuk-çocuk taşınır, kısmi sonuç açık mesajla raporlanır ([[Cleaner]]); yeni salt-okunur Docker kontrolü (`core/docker.rs`, Ana Sayfa kartı + `draxbyte docker`).
 - 2026-10-17 — Docker kartına onaylı "Build cache temizle" eklendi (`docker builder prune -f`, yalnız build cache; satır içi evet/vazgeç onayı, 5 dk zaman aşımı). Release exe `scripts/install.ps1` ile kuruldu, kısayollar güncellendi.
+- 2026-10-17 — v0.2.0: güncelleme kontrolü ([[Update]], varsayılan kapalı), imzalı Setup.exe (`scripts/make-setup.ps1`), GitHub Release.

@@ -184,8 +184,16 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
                 .color(MUTED)
                 .size(13.0),
         );
+        if let Some(crate::app::UpdateState::Available(rel)) = &app.update {
+            ui.hyperlink_to(
+                RichText::new(draxbyte::tf!("Yeni sürüm {}", "New version {}", rel.tag)).color(ACCENT).size(13.0),
+                &rel.url,
+            );
+        }
         let ai = if app.ai.is_some() {
             t("AI açık (her istek onaylı)", "AI on · you approve")
+        } else if app.cfg.ui.check_updates {
+            t("AI kapalı · yalnız güncelleme kontrolü", "AI off · update check only")
         } else {
             t("AI kapalı · ağ isteği yok", "AI off · no network requests")
         };

@@ -57,5 +57,8 @@
   ],
   "Cli": [
     "src/cli.rs"
+  ],
+  "Update": [
+    "src/update.rs"
   ]
 }

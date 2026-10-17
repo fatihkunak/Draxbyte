@@ -6,3 +6,4 @@ pub mod core;
 pub mod db;
 pub mod i18n;
 pub mod models;
+pub mod update;

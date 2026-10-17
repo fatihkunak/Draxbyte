@@ -89,6 +89,17 @@ pub fn settings(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(8.0);
             card(ui, |ui| {
                 ui.set_width(ui.available_width());
+                ui.checkbox(
+                    &mut app.cfg_draft.ui.check_updates,
+                    t(
+                        "Açılışta yeni sürüm var mı diye bak (GitHub'a tek istek; varsayılan kapalı)",
+                        "Check for a new version at start-up (one request to GitHub; default: off)",
+                    ),
+                );
+            });
+            ui.add_space(8.0);
+            card(ui, |ui| {
+                ui.set_width(ui.available_width());
                 ui.label(RichText::new(t("Tarama", "Scan")).strong());
                 ui.label(
                     RichText::new(t(

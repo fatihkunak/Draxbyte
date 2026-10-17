@@ -69,6 +69,47 @@ pub fn about(app: &mut App, ui: &mut egui::Ui) {
 
         ui.add_space(10.0);
         card(ui, |ui| {
+            use crate::app::UpdateState;
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(t("Güncellemeler", "Updates")).font(super::bold(16.0)));
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                let busy = app.update_job.is_some();
+                let label = if busy {
+                    t("Kontrol ediliyor…", "Checking…")
+                } else {
+                    t("Güncellemeleri kontrol et", "Check for updates")
+                };
+                if ui.add_enabled(!busy, egui::Button::new(label)).clicked() {
+                    let ctx = ui.ctx().clone();
+                    app.start_update_check(&ctx);
+                }
+                match &app.update {
+                    Some(UpdateState::UpToDate) => {
+                        ui.label(RichText::new(t("Güncelsin.", "You are up to date.")).color(ACCENT));
+                    }
+                    Some(UpdateState::Available(rel)) => {
+                        ui.label(RichText::new(tf!("Yeni sürüm: {}", "New version: {}", rel.tag)).color(ACCENT));
+                        ui.hyperlink_to(t("İndirme sayfası", "Download page"), &rel.url);
+                    }
+                    Some(UpdateState::Failed(e)) => {
+                        ui.label(RichText::new(tf!("Kontrol edilemedi: {e}", "Could not check: {e}")).color(super::WARN));
+                    }
+                    None => {}
+                }
+            });
+            ui.label(
+                RichText::new(t(
+                    "Yalnızca GitHub'dan en son sürüm numarası sorulur (tek istek); hiçbir şey indirilmez ya da kurulmaz. Düğmeye basmazsan ve Ayarlar'da açmazsan ağ isteği atılmaz.",
+                    "Only asks GitHub for the latest version number (one request); nothing is downloaded or installed. No network request is made unless you press the button or enable it in Settings.",
+                ))
+                .color(MUTED)
+                .small(),
+            );
+        });
+
+        ui.add_space(10.0);
+        card(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(RichText::new(t("Geliştirici", "Developer")).font(super::bold(16.0)));
             ui.add_space(4.0);

@@ -1,4 +1,4 @@
-# Draxbyte — Mimari Wiki
+﻿# Draxbyte — Mimari Wiki
 
 > Canlı mimari dokümantasyon. Her modül bir node; `[[wikilink]]` ile Obsidian graph view'da gezilir.
 > **Kod mapping:** `_build/map-nodes.mjs` → `_build/map.json` (node → kod dosyası).
@@ -27,6 +27,7 @@
 - [[App]] — uygulama durumu, arka plan işleri (thread + tokio), kanal polling
 - [[Ui]] — egui görünümleri: Ana Sayfa, Tarama, Sonuçlar, Temizlik, AI Önbelleği, Ayarlar
 - [[Cli]] — `scan` / `clean` başsız mod (clean varsayılan kuru çalıştırma)
+- [[Update]] — GitHub'dan yeni sürüm kontrolü (elle veya açılışta; varsayılan kapalı, indirme yok)
 
 ## 📜 Süreç
 - [[Changelog]] — wiki/kod değişiklik kaydı

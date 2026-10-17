@@ -1,4 +1,4 @@
-// Wiki node -> code file mapping (Draxbyte). Run: node docs/wiki/_build/map-nodes.mjs
+﻿// Wiki node -> code file mapping (Draxbyte). Run: node docs/wiki/_build/map-nodes.mjs
 import { writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +21,7 @@ const map = {
   App: ['src/app.rs', 'src/main.rs'],
   Ui: ['src/ui/mod.rs', 'src/ui/scan_view.rs', 'src/ui/result_view.rs', 'src/ui/settings_view.rs', 'src/ui/widgets.rs', 'src/ui/about_view.rs'],
   Cli: ['src/cli.rs'],
+  Update: ['src/update.rs'],
 };
 let missing = 0;
 for (const [node, paths] of Object.entries(map)) {

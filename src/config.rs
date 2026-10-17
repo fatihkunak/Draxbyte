@@ -54,12 +54,15 @@ pub struct AiConfig {
 pub struct UiConfig {
     /// `auto` (follow the system), `tr` or `en`.
     pub language: String,
+    /// Ask GitHub for a newer release at start-up. Off by default: no network request otherwise.
+    pub check_updates: bool,
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
             language: "auto".into(),
+            check_updates: false,
         }
     }
 }

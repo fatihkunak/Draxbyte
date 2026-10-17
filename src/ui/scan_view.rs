@@ -63,7 +63,7 @@ fn hero(app: &mut App, ui: &mut egui::Ui) {
                 ui.add_space(6.0);
                 ui.label(RichText::new(t("Depolama alanınızı geri kazanın.", "Reclaim your storage.")).font(super::bold(30.0)));
                 ui.add_space(4.0);
-                ui.label(RichText::new(t("Draxbyte diski yerelde tarar, büyük ve gereksiz dosyaları bulur; hiçbir şeyi onayın olmadan silmez. Yapay zekâ kapalıyken hiçbir ağ isteği atılmaz.", "Draxbyte scans your disk locally, finds large and useless files, and never deletes anything without your approval. While AI is off, no network request is ever made.")).color(MUTED));
+                ui.label(RichText::new(t("Draxbyte diski yerelde tarar, büyük ve gereksiz dosyaları bulur; hiçbir şeyi onayın olmadan silmez. Yapay zekâ ve güncelleme kontrolü kapalıyken hiçbir ağ isteği atılmaz.", "Draxbyte scans your disk locally, finds large and useless files, and never deletes anything without your approval. While AI and the update check are off, no network request is ever made.")).color(MUTED));
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     let busy = app.scan.is_some() || app.clean_job.is_some();

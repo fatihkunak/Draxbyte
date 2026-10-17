@@ -7,9 +7,19 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 if (-not $NoBuild) { cargo build --release; if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' } }
 
+# Same self-signed certificate as scripts\release.ps1 (see there). Signing is skipped when it does not exist yet.
+$subject = 'CN=Fatih Kunak (Draxbyte)'
+$cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq $subject -and $_.NotAfter -gt (Get-Date) } | Select-Object -First 1
+function Sign($path) {
+    if (-not $cert) { Write-Host "not signed (no certificate): $path"; return }
+    $r = Set-AuthenticodeSignature -FilePath $path -Certificate $cert -HashAlgorithm SHA256 -TimestampServer 'http://timestamp.digicert.com'
+    Write-Host "signed: $(Split-Path -Leaf $path) (self-signed: Windows reports it as untrusted, which is expected)"
+}
+
 $stage = Join-Path ([IO.Path]::GetTempPath()) ('draxbyte-setup-' + [guid]::NewGuid().ToString('n'))
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item (Join-Path $root 'target\release\draxbyte.exe') $stage
+Sign (Join-Path $stage 'draxbyte.exe')
 Copy-Item (Join-Path $PSScriptRoot 'setup\install-payload.ps1') (Join-Path $stage 'install.ps1')
 Copy-Item (Join-Path $PSScriptRoot 'setup\uninstall.ps1') $stage
 
@@ -51,6 +61,7 @@ Set-Content $sedPath $sed -Encoding ascii
 for ($i = 0; $i -lt 60 -and -not (Test-Path $target); $i++) { Start-Sleep 1 }
 if (-not (Test-Path $target)) { throw 'IExpress did not produce the setup file' }
 
+Sign $target
 New-Item -ItemType Directory -Force $Out | Out-Null
 $final = Join-Path $Out 'Draxbyte-Setup.exe'
 Copy-Item $target $final -Force

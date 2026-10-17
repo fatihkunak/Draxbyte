@@ -75,6 +75,12 @@ pub struct Confirm {
     pub typed: String,
 }
 
+pub enum UpdateState {
+    UpToDate,
+    Available(draxbyte::update::Release),
+    Failed(String),
+}
+
 pub struct App {
     pub cfg: Config,
     pub cfg_draft: Config,
@@ -115,6 +121,8 @@ pub struct App {
 
     pub docker: Option<DockerStatus>,
     pub docker_job: Option<Receiver<DockerStatus>>,
+    pub update: Option<UpdateState>,
+    pub update_job: Option<Receiver<Result<draxbyte::update::Release, String>>>,
     pub docker_confirm_prune: bool,
     pub docker_prune_job: Option<Receiver<Result<String, String>>>,
 
@@ -209,12 +217,31 @@ impl App {
             model_filter: String::new(),
             docker: None,
             docker_job: None,
+            update: None,
+            update_job: None,
             docker_confirm_prune: false,
             docker_prune_job: None,
             toast: None,
         };
         app.rebuild_ai();
+        if app.cfg.ui.check_updates {
+            app.start_update_check(&cc.egui_ctx);
+        }
         app
+    }
+
+    /// One GET to GitHub's "latest release" endpoint; `poll_jobs` picks up the answer.
+    pub fn start_update_check(&mut self, ctx: &egui::Context) {
+        if self.update_job.is_some() {
+            return;
+        }
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        self.rt.spawn(async move {
+            let _ = tx.send(draxbyte::update::latest().await);
+            ctx.request_repaint();
+        });
+        self.update_job = Some(rx);
     }
 
     /// Runs the read-only Docker check on a plain thread; `poll_jobs` picks up the result.
@@ -526,6 +553,18 @@ impl App {
             if let Ok(st) = rx.try_recv() {
                 self.docker_job = None;
                 self.docker = Some(st);
+            }
+        }
+        if let Some(rx) = &self.update_job {
+            if let Ok(res) = rx.try_recv() {
+                self.update_job = None;
+                self.update = Some(match res {
+                    Ok(rel) if draxbyte::update::is_newer(env!("CARGO_PKG_VERSION"), &rel.tag) => {
+                        UpdateState::Available(rel)
+                    }
+                    Ok(_) => UpdateState::UpToDate,
+                    Err(e) => UpdateState::Failed(e),
+                });
             }
         }
         if let Some(rx) = &self.docker_prune_job {

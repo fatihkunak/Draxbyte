@@ -1,0 +1,61 @@
+# Release workflow to enable AFTER SignPath Foundation approves the project.
+# Copy to .github/workflows/release.yml and fill in the three slugs and two secrets.
+#
+# What it does: builds the exe from the tagged commit on a GitHub-hosted runner, uploads it as an
+# artifact, asks SignPath to sign it (manual approval in SignPath), downloads the signed exe and
+# attaches it to the GitHub release together with a SHA256 checksum.
+#
+# Needs (repository settings):
+#   secrets.SIGNPATH_API_TOKEN       - SignPath CI user token
+#   vars.SIGNPATH_ORGANIZATION_ID    - organization id shown in SignPath
+# and in SignPath: project "draxbyte", signing policy "release-signing", artifact configuration
+# "exe" that signs draxbyte.exe and enforces product name "Draxbyte" + the Cargo.toml version.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write   # SignPath verifies the build origin through GitHub's OIDC token
+
+jobs:
+  build-and-sign:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+
+      - name: Upload unsigned exe
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: draxbyte-unsigned
+          path: target/release/draxbyte.exe
+
+      - name: Sign with SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: draxbyte
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: exe
+          github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Checksum and publish
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash signed\draxbyte.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  draxbyte.exe" | Set-Content signed\SHA256SUMS.txt -Encoding ascii
+          gh release create "${{ github.ref_name }}" signed\draxbyte.exe signed\SHA256SUMS.txt `
+            --title "Draxbyte ${{ github.ref_name }}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

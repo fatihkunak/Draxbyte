@@ -12,6 +12,7 @@ use draxbyte::config::{default_config_path, Config};
 impl eframe::App for app::App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll_jobs();
+        self.launch_update(ui.ctx());
         ui::draw(self, ui);
     }
 }

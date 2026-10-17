@@ -9,9 +9,13 @@ try {
     $dest = Join-Path $env:LOCALAPPDATA 'Programs\Draxbyte'
     New-Item -ItemType Directory -Force $dest | Out-Null
     $exe = Join-Path $dest 'draxbyte.exe'
-    try {
-        Copy-Item (Join-Path $src 'draxbyte.exe') $exe -Force
-    } catch {
+    # An in-app update starts this setup and then closes Draxbyte; give the old process a few seconds to exit.
+    $copied = $false
+    for ($i = 0; $i -lt 15 -and -not $copied; $i++) {
+        try { Copy-Item (Join-Path $src 'draxbyte.exe') $exe -Force; $copied = $true }
+        catch { Start-Sleep -Seconds 1 }
+    }
+    if (-not $copied) {
         Say "Draxbyte acik gorunuyor. Kapatip kurulumu tekrar calistir.`n`nDraxbyte seems to be running. Close it and run the setup again." 'Warning'
         exit 1
     }

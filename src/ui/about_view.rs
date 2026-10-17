@@ -45,6 +45,51 @@ fn row(ui: &mut egui::Ui, label: &str, value: impl Into<String>) {
     });
 }
 
+/// "Update now" button, inline confirmation, download progress and errors.
+fn update_install_row(app: &mut App, ui: &mut egui::Ui) {
+    use std::sync::atomic::Ordering::Relaxed;
+    if let Some(dl) = &app.update_dl {
+        let (done, total) = (dl.progress.done.load(Relaxed), dl.progress.total.load(Relaxed));
+        let frac = if total > 0 { done as f32 / total as f32 } else { 0.0 };
+        ui.add(egui::ProgressBar::new(frac).desired_width(360.0).text(tf!(
+            "İndiriliyor ve doğrulanıyor… {:.1} MB",
+            "Downloading and verifying… {:.1} MB",
+            done as f64 / 1_048_576.0
+        )));
+        return;
+    }
+    if app.update_ready.is_some() {
+        ui.label(RichText::new(t("Doğrulandı, kurulum başlatılıyor…", "Verified, starting the installer…")).color(ACCENT));
+        return;
+    }
+    let busy = app.scan.is_some() || app.clean_job.is_some();
+    ui.horizontal(|ui| {
+        if app.update_confirm {
+            ui.label(RichText::new(t(
+                "Kurulum dosyası indirilip doğrulanacak, sonra Draxbyte kapanıp kurulum açılacak. Devam?",
+                "The installer is downloaded and verified, then Draxbyte closes and the setup opens. Continue?",
+            )).color(super::WARN));
+            if ui.button(t("Evet, güncelle", "Yes, update")).clicked() {
+                app.update_confirm = false;
+                let ctx = ui.ctx().clone();
+                app.start_update_download(&ctx);
+            }
+            if ui.button(t("Vazgeç", "Cancel")).clicked() {
+                app.update_confirm = false;
+            }
+        } else if ui
+            .add_enabled(!busy, egui::Button::new(t("Şimdi güncelle", "Update now")))
+            .on_disabled_hover_text(t("Tarama/temizlik bitince güncelle", "Update after the scan/cleanup finishes"))
+            .clicked()
+        {
+            app.update_confirm = true;
+        }
+    });
+    if let Some(e) = &app.update_dl_error {
+        ui.label(RichText::new(tf!("Güncelleme başarısız: {e}", "Update failed: {e}")).color(super::DANGER));
+    }
+}
+
 pub fn about(app: &mut App, ui: &mut egui::Ui) {
     heading(ui, t("Hakkında", "About"), "");
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -98,10 +143,15 @@ pub fn about(app: &mut App, ui: &mut egui::Ui) {
                     None => {}
                 }
             });
+            let can_install = matches!(&app.update, Some(UpdateState::Available(r)) if r.setup_url.is_some());
+            if cfg!(windows) && can_install {
+                ui.add_space(6.0);
+                update_install_row(app, ui);
+            }
             ui.label(
                 RichText::new(t(
-                    "Yalnızca GitHub'dan en son sürüm numarası sorulur (tek istek); hiçbir şey indirilmez ya da kurulmaz. Düğmeye basmazsan ve Ayarlar'da açmazsan ağ isteği atılmaz.",
-                    "Only asks GitHub for the latest version number (one request); nothing is downloaded or installed. No network request is made unless you press the button or enable it in Settings.",
+                    "Kontrol yalnızca GitHub'dan en son sürüm numarasını sorar (tek istek). İndirme ve kurulum yalnızca sen \"Şimdi güncelle\" dersen başlar; dosya SHA256 ve imza sertifikası doğrulanmadan çalıştırılmaz. Düğmeye basmazsan ve Ayarlar'da açmazsan ağ isteği atılmaz.",
+                    "Checking only asks GitHub for the latest version number (one request). Downloading and installing start only when you click “Update now”; the file is not run before its SHA256 and signing certificate are verified. No network request is made unless you press a button or enable the check in Settings.",
                 ))
                 .color(MUTED)
                 .small(),

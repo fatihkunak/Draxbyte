@@ -75,6 +75,12 @@ pub struct Confirm {
     pub typed: String,
 }
 
+/// A running installer download (see `draxbyte::update::download_setup`).
+pub struct UpdateDl {
+    pub progress: Arc<draxbyte::update::DownloadProgress>,
+    pub rx: Receiver<Result<PathBuf, String>>,
+}
+
 pub enum UpdateState {
     UpToDate,
     Available(draxbyte::update::Release),
@@ -123,6 +129,11 @@ pub struct App {
     pub docker_job: Option<Receiver<DockerStatus>>,
     pub update: Option<UpdateState>,
     pub update_job: Option<Receiver<Result<draxbyte::update::Release, String>>>,
+    pub update_confirm: bool,
+    pub update_dl: Option<UpdateDl>,
+    pub update_dl_error: Option<String>,
+    /// Verified installer waiting to be started (the app then closes so it can be replaced).
+    pub update_ready: Option<PathBuf>,
     pub docker_confirm_prune: bool,
     pub docker_prune_job: Option<Receiver<Result<String, String>>>,
 
@@ -219,6 +230,10 @@ impl App {
             docker_job: None,
             update: None,
             update_job: None,
+            update_confirm: false,
+            update_dl: None,
+            update_dl_error: None,
+            update_ready: None,
             docker_confirm_prune: false,
             docker_prune_job: None,
             toast: None,
@@ -228,6 +243,37 @@ impl App {
             app.start_update_check(&cc.egui_ctx);
         }
         app
+    }
+
+    /// Downloads and verifies the installer of the available release. Caller must have confirmed.
+    pub fn start_update_download(&mut self, ctx: &egui::Context) {
+        let Some(UpdateState::Available(rel)) = &self.update else {
+            return;
+        };
+        if self.update_dl.is_some() {
+            return;
+        }
+        let rel = rel.clone();
+        let progress = Arc::new(draxbyte::update::DownloadProgress::default());
+        let (tx, rx) = channel();
+        let (p, ctx) = (progress.clone(), ctx.clone());
+        self.rt.spawn(async move {
+            let _ = tx.send(draxbyte::update::download_setup(&rel, &p).await);
+            ctx.request_repaint();
+        });
+        self.update_dl_error = None;
+        self.update_dl = Some(UpdateDl { progress, rx });
+    }
+
+    /// Starts the verified installer and closes the app so the installer can overwrite the exe.
+    pub fn launch_update(&mut self, ctx: &egui::Context) {
+        let Some(path) = self.update_ready.take() else {
+            return;
+        };
+        match std::process::Command::new(&path).spawn() {
+            Ok(_) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Err(e) => self.update_dl_error = Some(e.to_string()),
+        }
     }
 
     /// One GET to GitHub's "latest release" endpoint; `poll_jobs` picks up the answer.
@@ -565,6 +611,15 @@ impl App {
                     Ok(_) => UpdateState::UpToDate,
                     Err(e) => UpdateState::Failed(e),
                 });
+            }
+        }
+        if let Some(dl) = &self.update_dl {
+            if let Ok(res) = dl.rx.try_recv() {
+                self.update_dl = None;
+                match res {
+                    Ok(path) => self.update_ready = Some(path),
+                    Err(e) => self.update_dl_error = Some(e),
+                }
             }
         }
         if let Some(rx) = &self.docker_prune_job {

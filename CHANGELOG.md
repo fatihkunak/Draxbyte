@@ -1,4 +1,11 @@
-# Changelog
+﻿# Changelog
+
+## 0.2.1 — 2026-10-17
+- New: in-app update. About → "Update now" downloads `Draxbyte-Setup.exe`, verifies its SHA256 (from the release's `SHA256SUMS.txt`) and the pinned signing certificate, then starts the installer and closes the app. Nothing runs before verification; any failure deletes the file and shows the error
+- Setup retries copying the exe for up to 15 s so it can replace a Draxbyte that is still closing
+- Note: 0.2.0 installs have no in-app update — install this version once by hand, later versions update from inside the app
+
+Türkçe özet: uygulama içinden güncelleme (indir → SHA256 + sabitlenmiş imza doğrulaması → Setup'ı başlat); 0.2.0 kullananlar bu sürümü bir kez elle kurmalı.
 
 ## 0.2.0 — 2026-10-17
 - Fix: Ctrl+C / Ctrl+V / Ctrl+X did nothing (clipboard support was not compiled in) — pasting an API key now works
@@ -22,3 +29,4 @@ First public release.
 - Signed release exe (self-signed certificate) with SHA256
 
 Türkçe özet: ilk herkese açık sürüm — yerel paralel tarama, güvenli/dikkat/silme kuralları, silmeden önce son kontrol, Çöp Kutusu + geri alma + kuru çalıştırma, grafikli ana sayfa, isteğe bağlı çoklu sağlayıcılı AI, komut satırı, iki dilli arayüz, imzalı exe.
+

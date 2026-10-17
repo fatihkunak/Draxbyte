@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="docs/screenshots/logo.png" width="120" alt="Draxbyte logo">
 </p>
 
@@ -33,6 +33,25 @@ Deleted items go to the Recycle Bin by default and can be restored.
 - **One small file.** `draxbyte.exe` is about 16 MB; no installer or runtime needed.
 - **Two languages.** English and Türkçe, chosen automatically from your system or in Settings.
 
+## Features
+
+- 🔎 **Fast parallel scan** — uses all your cores, cancellable, live counters
+- 🧠 **Rule engine, no AI needed** — old logs/dumps, caches, `node_modules`, Gradle/Cargo build output, disk images, big or old archives, virtual disks
+- 🚦 **Safe / Careful / Keep** colours with a plain-language reason for every row
+- 🛡️ **Safety net** — protected system paths, secrets and links are never touched; every item is re-checked right before deletion
+- ♻️ **Reversible** — Recycle Bin by default, one-click undo, dry run, permanent delete only after an extra confirmation
+- 📊 **Dashboard** — disk usage ring, largest items, distribution by type, one-click actions
+- 🤖 **Optional AI** — 14 providers (Ollama and LM Studio run locally for free), models fetched automatically, cached answers, daily token limit, every request approved by you
+- ⌨️ **CLI** — `draxbyte scan` / `draxbyte clean` for scripts and servers (dry run by default)
+- 🌍 **English and Türkçe** UI, automatic or your choice
+- 📦 **One ~16 MB exe**, offline, no telemetry, MIT licensed
+
+## How it works
+
+1. **Scan** — the app walks your folders in parallel and asks the rule engine what each item is. Nothing is changed.
+2. **Review** — you see every candidate with size, age and the reason. Tick what you want gone.
+3. **Clean** — a confirmation shows the exact total. Items go to the Recycle Bin (or are only reported in a dry run). A report lists what happened to each one, and you can undo.
+
 ## Screenshots
 
 | | |
@@ -43,6 +62,16 @@ Deleted items go to the Recycle Bin by default and can be restored.
 | **Cleanup report** — what happened to each item, undo | **AI settings** — many providers, models fetched automatically |
 
 > Screenshots were taken with a throw-away demo folder; they contain no personal files.
+
+<details>
+<summary><b>More screenshots</b></summary>
+
+| | |
+|---|---|
+| ![Language](docs/screenshots/en/settings-language.png) | ![About](docs/screenshots/en/about.png) |
+| **Settings** — language, scan, rules | **About** — version, developer, licences |
+
+</details>
 
 ## Getting started
 
@@ -194,6 +223,14 @@ docs/wiki/   architecture wiki (Obsidian-compatible)   docs/USAGE.md  user guide
 ```
 
 Design decisions and why: [DECISIONS.md](DECISIONS.md) · module map: [docs/wiki/Index.md](docs/wiki/Index.md).
+
+## Roadmap
+
+Ideas, not promises: trusted code signing (SignPath), more cleanup rules (browser/package-manager/game-launcher caches), Linux and macOS testing, a scheduled "monthly scan" reminder, more UI languages. Have an idea? Open an [issue](https://github.com/fatihkunak/Draxbyte/issues).
+
+## Contributing and support
+
+Pull requests are welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) first. Security issues: see [SECURITY.md](SECURITY.md). Release history: [CHANGELOG.md](CHANGELOG.md). Documentation also lives in the [Wiki](https://github.com/fatihkunak/Draxbyte/wiki).
 
 ## License
 

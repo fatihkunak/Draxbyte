@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability / Güvenlik açığı
+    url: https://github.com/fatihkunak/Draxbyte/security/advisories/new
+    about: Please report security problems privately. / Güvenlik sorunlarını özel olarak bildir.
+  - name: Documentation / Belgeler
+    url: https://github.com/fatihkunak/Draxbyte/wiki
+    about: User guide, safety notes and AI providers. / Kullanım kılavuzu, güvenlik notları ve AI sağlayıcıları.

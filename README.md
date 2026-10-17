@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="docs/screenshots/logo.png" width="120" alt="Draxbyte logosu">
 </p>
 
@@ -36,6 +36,25 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 - **Tek küçük dosya.** `draxbyte.exe` ~16 MB, kurulum ya da çalışma zamanı gerekmez.
 - **İki dil.** Türkçe ve English; sistem diline göre otomatik, Ayarlar → *Dil / Language*'dan değiştirilebilir.
 
+## Özellikler
+
+- 🔎 **Hızlı paralel tarama** — tüm çekirdekleri kullanır, iptal edilebilir, canlı sayaçlar
+- 🧠 **AI gerektirmeyen kural motoru** — eski log/dump, önbellek, `node_modules`, Gradle/Cargo derleme çıktısı, disk imajları, büyük/eski arşivler, sanal diskler
+- 🚦 **Güvenli / Dikkat / Silme** renkleri ve her satır için anlaşılır gerekçe
+- 🛡️ **Güvenlik ağı** — korumalı sistem yolları, gizli anahtarlar ve bağlar asla silinmez; her öğe silmeden hemen önce yeniden kontrol edilir
+- ♻️ **Geri alınabilir** — varsayılan Çöp Kutusu, tek tıkla geri alma, kuru çalıştırma, kalıcı silme yalnızca ek onayla
+- 📊 **Gösterge paneli** — disk doluluk halkası, en büyük öğeler, türe göre dağılım, tek tıkla eylemler
+- 🤖 **İsteğe bağlı AI** — 14 sağlayıcı (Ollama ve LM Studio yerelde ücretsiz), modeller otomatik getirilir, önbellekli yanıtlar, günlük token limiti, her istek senin onayınla
+- ⌨️ **Komut satırı** — betikler ve sunucular için `draxbyte scan` / `draxbyte clean` (varsayılan kuru çalıştırma)
+- 🌍 **Türkçe ve English** arayüz, otomatik ya da seçimine göre
+- 📦 **Tek ~16 MB exe**, çevrimdışı, telemetri yok, MIT lisanslı
+
+## Nasıl çalışır?
+
+1. **Tara** — uygulama klasörlerini paralel gezer, kural motoruna her öğenin ne olduğunu sorar. Hiçbir şey değişmez.
+2. **İncele** — her adayı boyutu, yaşı ve gerekçesiyle görürsün. Gitmesini istediklerini işaretle.
+3. **Temizle** — onay ekranı tam toplamı gösterir. Öğeler Çöp Kutusu'na taşınır (kuru çalıştırmada yalnızca raporlanır). Rapor her öğeye ne olduğunu listeler; geri alabilirsin.
+
 ## Ekran görüntüleri
 
 | | |
@@ -46,6 +65,18 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 | **Temizlik raporu** — her öğe için ne olduğu, geri alma | **AI ayarları** — çoklu sağlayıcı, modelleri otomatik getirme |
 
 > Görüntüler örnek (demo) klasörleriyle alındı; kişisel dosya içermez.
+
+<details>
+<summary><b>Daha fazla ekran görüntüsü / English screenshots</b></summary>
+
+| | |
+|---|---|
+| ![Hakkında](docs/screenshots/hakkinda.png) | ![Home (English)](docs/screenshots/en/home.png) |
+| **Hakkında** — sürüm, geliştirici, lisanslar | **English UI** — [README.en.md](README.en.md) |
+| ![Results (English)](docs/screenshots/en/results.png) | ![Settings (English)](docs/screenshots/en/settings-language.png) |
+| **Results** (English) | **Settings → Dil / Language** |
+
+</details>
 
 ## Başlarken
 
@@ -202,6 +233,14 @@ docs/wiki/   mimari wiki (Obsidian uyumlu)   docs/KULLANIM.md  kullanım kılavu
 ```
 
 Mimari kararlar ve nedenleri: [DECISIONS.md](DECISIONS.md) · modül haritası: [docs/wiki/Index.md](docs/wiki/Index.md).
+
+## Yol haritası
+
+Fikirler, söz değil: güvenilir kod imzası (SignPath), daha çok temizlik kuralı (tarayıcı/paket yöneticisi/oyun başlatıcı önbellekleri), Linux ve macOS testi, aylık tarama hatırlatıcısı, daha fazla arayüz dili. Fikrin mi var? [Issue](https://github.com/fatihkunak/Draxbyte/issues) aç.
+
+## Katkı ve destek
+
+Pull request'ler hoş karşılanır — önce [CONTRIBUTING.md](CONTRIBUTING.md) dosyasını oku. Güvenlik sorunları: [SECURITY.md](SECURITY.md). Sürüm geçmişi: [CHANGELOG.md](CHANGELOG.md). Belgeler [Wiki](https://github.com/fatihkunak/Draxbyte/wiki)'de de var.
 
 ## Lisans
 

@@ -48,6 +48,8 @@ pub fn home(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(14.0);
             last_scan(app, ui);
+            ui.add_space(14.0);
+            docker_card(app, ui);
         });
 }
 
@@ -482,4 +484,105 @@ pub fn progress(app: &mut App, ui: &mut egui::Ui) {
     });
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_millis(100));
+}
+
+fn docker_card(app: &mut App, ui: &mut egui::Ui) {
+    use draxbyte::core::docker::DockerStatus;
+    card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Docker").font(super::bold(17.0)));
+            let busy = app.docker_job.is_some();
+            let label = if busy {
+                t("Kontrol ediliyor…", "Checking…")
+            } else {
+                t("Docker'ı kontrol et", "Check Docker")
+            };
+            if ui.add_enabled(!busy, egui::Button::new(label)).clicked() {
+                let ctx = ui.ctx().clone();
+                app.start_docker_check(&ctx);
+            }
+        });
+        match &app.docker {
+            None => {
+                ui.label(
+                    RichText::new(t(
+                        "Docker'ın disk kullanımını (imaj, konteyner, volume, build cache) salt-okunur kontrol eder; hiçbir şeyi silmez.",
+                        "Read-only check of Docker's disk usage (images, containers, volumes, build cache); deletes nothing.",
+                    ))
+                    .color(MUTED),
+                );
+            }
+            Some(DockerStatus::NotInstalled) => {
+                ui.label(
+                    RichText::new(t(
+                        "Docker bulunamadı (PATH'te yok).",
+                        "Docker not found (not on PATH).",
+                    ))
+                    .color(MUTED),
+                );
+            }
+            Some(DockerStatus::DaemonDown(e)) => {
+                ui.label(
+                    RichText::new(tf!(
+                        "Docker çalışmıyor ya da yanıt vermiyor: {e}",
+                        "Docker is not running or not responding: {e}"
+                    ))
+                    .color(WARN),
+                );
+            }
+            Some(DockerStatus::Ok(rows)) => {
+                egui::Grid::new("docker_grid")
+                    .num_columns(4)
+                    .spacing([24.0, 6.0])
+                    .show(ui, |ui| {
+                        for h in [
+                            t("Tür", "Type"),
+                            t("Adet (aktif)", "Count (active)"),
+                            t("Boyut", "Size"),
+                            t("Geri kazanılabilir", "Reclaimable"),
+                        ] {
+                            ui.label(RichText::new(h).color(MUTED).small());
+                        }
+                        ui.end_row();
+                        for r in rows {
+                            ui.label(&r.kind);
+                            ui.label(format!("{} ({})", r.total, r.active));
+                            ui.label(&r.size);
+                            ui.label(RichText::new(&r.reclaimable).color(ACCENT));
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if app.docker_prune_job.is_some() {
+                        ui.label(RichText::new(t("Build cache temizleniyor…", "Cleaning build cache…")).color(WARN));
+                    } else if app.docker_confirm_prune {
+                        ui.label(RichText::new(t(
+                            "Yalnızca build cache silinir (konteyner, imaj, volume'a dokunulmaz). Emin misin?",
+                            "Only the build cache is removed (containers, images, volumes untouched). Sure?",
+                        )).color(WARN));
+                        if ui.button(t("Evet, temizle", "Yes, clean")).clicked() {
+                            app.docker_confirm_prune = false;
+                            let ctx = ui.ctx().clone();
+                            app.start_docker_prune(&ctx);
+                        }
+                        if ui.button(t("Vazgeç", "Cancel")).clicked() {
+                            app.docker_confirm_prune = false;
+                        }
+                    } else if ui.button(t("Build cache temizle", "Clean build cache")).clicked() {
+                        app.docker_confirm_prune = true;
+                    }
+                });
+                ui.label(
+                    RichText::new(t(
+                        "İmaj/volume temizliği için terminalde docker system prune (volume'larda dikkat — veri içerebilir).",
+                        "For images/volumes use docker system prune in a terminal (careful with volumes — they may hold data).",
+                    ))
+                    .color(MUTED)
+                    .small(),
+                );
+            }
+        }
+    });
 }

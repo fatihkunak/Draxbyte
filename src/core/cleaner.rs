@@ -69,8 +69,34 @@ fn delete_one(item: &ScanItem, permanent: bool) -> Outcome {
     } else {
         match trash::delete(&item.path) {
             Ok(()) => Outcome::Trashed,
+            // Windows aborts the whole shell operation when one inner file is locked or
+            // its path is too long; retry child by child so the rest still gets cleaned.
+            Err(e) if item.is_dir => trash_children(item, &e.to_string()),
             Err(e) => Outcome::Failed(e.to_string()),
         }
+    }
+}
+
+fn trash_children(item: &ScanItem, first_err: &str) -> Outcome {
+    let Ok(rd) = std::fs::read_dir(&item.path) else {
+        return Outcome::Failed(first_err.to_string());
+    };
+    let (mut ok, mut failed) = (0usize, 0usize);
+    for child in rd.flatten() {
+        match trash::delete(child.path()) {
+            Ok(()) => ok += 1,
+            Err(_) => failed += 1,
+        }
+    }
+    if failed == 0 {
+        // Everything inside is gone; the empty folder itself is not worth failing over.
+        let _ = trash::delete(&item.path);
+        Outcome::Trashed
+    } else {
+        Outcome::Failed(crate::tf!(
+            "kısmen temizlendi ({ok} taşındı, {failed} kilitli/silinemedi) — ilgili uygulamayı kapatıp tekrar dene",
+            "partially cleaned ({ok} moved, {failed} locked/failed) — close the owning app and retry"
+        ))
     }
 }
 

@@ -40,6 +40,8 @@ pub enum Cmd {
         save: bool,
     },
     /// Clean what a scan finds. DRY-RUN unless --apply is given.
+    /// Read-only Docker disk usage check (`docker system df`).
+    Docker,
     Clean {
         paths: Vec<PathBuf>,
         /// Also include yellow ("be careful") items. Green only by default.
@@ -127,6 +129,35 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                 );
             }
             Ok(())
+        }
+        Some(Cmd::Docker) => {
+            use draxbyte::core::docker::{check, DockerStatus};
+            match check() {
+                DockerStatus::NotInstalled => {
+                    bail!("{}", t("Docker bulunamadı", "Docker not found"))
+                }
+                DockerStatus::DaemonDown(e) => bail!(
+                    "{}",
+                    tf!("Docker yanıt vermiyor: {e}", "Docker is not responding: {e}")
+                ),
+                DockerStatus::Ok(rows) => {
+                    println!(
+                        "{:<14} {:>8} {:>8} {:>12} {}",
+                        t("TÜR", "TYPE"),
+                        t("ADET", "COUNT"),
+                        t("AKTİF", "ACTIVE"),
+                        t("BOYUT", "SIZE"),
+                        t("GERİ KAZANILABİLİR", "RECLAIMABLE")
+                    );
+                    for r in rows {
+                        println!(
+                            "{:<14} {:>8} {:>8} {:>12} {}",
+                            r.kind, r.total, r.active, r.size, r.reclaimable
+                        );
+                    }
+                    Ok(())
+                }
+            }
         }
         Some(Cmd::Clean {
             paths,

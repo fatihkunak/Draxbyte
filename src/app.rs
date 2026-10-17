@@ -5,6 +5,7 @@ use crate::ui;
 use draxbyte::ai::client::{AiAnswer, AiService};
 use draxbyte::config::{data_dir, expand_path, Config};
 use draxbyte::core::cleaner::{self, CleanOptions};
+use draxbyte::core::docker::{self, DockerStatus};
 use draxbyte::core::scanner::{self, Progress, ScanOptions, ScanOutput};
 use draxbyte::db::Db;
 use draxbyte::i18n::t;
@@ -112,6 +113,11 @@ pub struct App {
     pub test_status: Option<(bool, String)>,
     pub model_filter: String,
 
+    pub docker: Option<DockerStatus>,
+    pub docker_job: Option<Receiver<DockerStatus>>,
+    pub docker_confirm_prune: bool,
+    pub docker_prune_job: Option<Receiver<Result<String, String>>>,
+
     pub toast: Option<(String, Instant)>,
     pub logo: egui::TextureHandle,
 }
@@ -201,10 +207,42 @@ impl App {
             test_job: None,
             test_status: None,
             model_filter: String::new(),
+            docker: None,
+            docker_job: None,
+            docker_confirm_prune: false,
+            docker_prune_job: None,
             toast: None,
         };
         app.rebuild_ai();
         app
+    }
+
+    /// Runs the read-only Docker check on a plain thread; `poll_jobs` picks up the result.
+    pub fn start_docker_check(&mut self, ctx: &egui::Context) {
+        if self.docker_job.is_some() {
+            return;
+        }
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(docker::check());
+            ctx.request_repaint();
+        });
+        self.docker_job = Some(rx);
+    }
+
+    /// Prunes only the build cache, then re-checks usage. Caller must have confirmed.
+    pub fn start_docker_prune(&mut self, ctx: &egui::Context) {
+        if self.docker_prune_job.is_some() {
+            return;
+        }
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(docker::prune_build_cache());
+            ctx.request_repaint();
+        });
+        self.docker_prune_job = Some(rx);
     }
 
     pub fn toast(&mut self, msg: impl Into<String>) {
@@ -482,6 +520,27 @@ impl App {
                 self.rows.retain(|r| !gone.contains(&r.item.path));
                 self.view_dirty = true;
                 self.report = Some(rep);
+            }
+        }
+        if let Some(rx) = &self.docker_job {
+            if let Ok(st) = rx.try_recv() {
+                self.docker_job = None;
+                self.docker = Some(st);
+            }
+        }
+        if let Some(rx) = &self.docker_prune_job {
+            if let Ok(res) = rx.try_recv() {
+                self.docker_prune_job = None;
+                match res {
+                    Ok(summary) => {
+                        self.toast(tf!(
+                            "Build cache temizlendi. {summary}",
+                            "Build cache cleaned. {summary}"
+                        ));
+                        self.docker = None; // stale numbers; the user re-checks
+                    }
+                    Err(e) => self.toast(tf!("Docker hatası: {e}", "Docker error: {e}")),
+                }
             }
         }
         if let Some(rx) = &self.models_job {

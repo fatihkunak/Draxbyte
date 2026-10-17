@@ -4,3 +4,5 @@
 - 2026-10-17 — Çift dil (Türkçe/English, [[I18n]]), İngilizce README + `docs/USAGE.md`, kendinden imzalı exe (`scripts/release.ps1`) + GitHub release.
 - 2026-10-17 — Ana sayfa yeniden tasarlandı (hero + 4 hızlı eylem kartı + en büyük öğeler + dağılım donut'ı), yazı boyutları büyütüldü, sidebar alt yazısı okunur, tam ekran/dar pencere düzeltmeleri; `Kind` sınıflaması (models.rs).
 - 2026-10-17 — Açık kaynak yayın hazırlığı: MIT lisansı, README + docs/KULLANIM.md, ekran görüntüleri (demo veriyle), DRAXBYTE_HOME (taşınabilir veri klasörü), varsayılan pencere 1280x800.
+- 2026-10-17 — Düzeltmeler: eframe `clipboard` özelliği açıldı (Ctrl+C/V/X, API anahtarı yapıştırma); Çöp Kutusu "Some operations were aborted" hatasında klasör çocuk-çocuk taşınır, kısmi sonuç açık mesajla raporlanır ([[Cleaner]]); yeni salt-okunur Docker kontrolü (`core/docker.rs`, Ana Sayfa kartı + `draxbyte docker`).
+- 2026-10-17 — Docker kartına onaylı "Build cache temizle" eklendi (`docker builder prune -f`, yalnız build cache; satır içi evet/vazgeç onayı, 5 dk zaman aşımı). Release exe `scripts/install.ps1` ile kuruldu, kısayollar güncellendi.

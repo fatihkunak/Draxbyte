@@ -1,0 +1,5 @@
+# Changelog
+- 2026-10-17 — İlk sürüm: çekirdek (scanner/rules/safety/cleaner), SQLite, AI katmanı (cache'li), egui arayüzü, CLI. Testler yeşil; Çöp Kutusu turu gerçek makinede doğrulandı.
+- 2026-10-17 — Çoklu AI sağlayıcı seçimi + modelleri otomatik getirme ([[AiProviders]]), Inter yazı tipi (Regular/SemiBold gömülü), Hakkında ekranı, exe simgesi + `scripts/install.ps1` (masaüstü kısayolu).
+- 2026-10-17 — Ana sayfa yeniden tasarlandı (hero + 4 hızlı eylem kartı + en büyük öğeler + dağılım donut'ı), yazı boyutları büyütüldü, sidebar alt yazısı okunur, tam ekran/dar pencere düzeltmeleri; `Kind` sınıflaması (models.rs).
+- 2026-10-17 — Açık kaynak yayın hazırlığı: MIT lisansı, README + docs/KULLANIM.md, ekran görüntüleri (demo veriyle), DRAXBYTE_HOME (taşınabilir veri klasörü), varsayılan pencere 1280x800.

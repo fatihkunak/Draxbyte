@@ -1,0 +1,44 @@
+[package]
+name = "draxbyte"
+version = "0.1.0"
+edition = "2021"
+authors = ["Fatih Kunak"]
+description = "Local-first disk scanner and cleaner"
+license = "MIT"
+repository = "https://github.com/fatihkunak/Draxbyte"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+dirs = "7.0.0"
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "links", "wayland", "x11"] }
+egui = { version = "0.37", default-features = false }
+egui_extras = { version = "0.37.0", default-features = false }
+globset = "0.4.20"
+hex = "0.4.3"
+rayon = "1.12.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+sysinfo = { version = "0.39.6", default-features = false, features = ["disk"] }
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros"] }
+toml = "1.1.8"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+trash = "5.2.9"
+walkdir = "2.5.0"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 4
+
+[build-dependencies]
+winresource = "0.1.34"

@@ -1,0 +1,544 @@
+//! Application state and the glue between the UI and the background jobs.
+//! Scanning and cleaning run on plain threads; AI requests run on the tokio runtime.
+
+use crate::ui;
+use draxbyte::ai::client::{AiAnswer, AiService};
+use draxbyte::config::{data_dir, expand_path, Config};
+use draxbyte::core::cleaner::{self, CleanOptions};
+use draxbyte::core::scanner::{self, Progress, ScanOptions, ScanOutput};
+use draxbyte::db::Db;
+use draxbyte::models::{Category, CleanReport, Outcome, ScanItem, ScanSummary};
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
+use std::time::Instant;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Home,
+    Scan,
+    Results,
+    Clean,
+    Cache,
+    Settings,
+    About,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SortKey {
+    Size,
+    Age,
+    Category,
+    Path,
+}
+
+pub struct AiNote {
+    pub text: String,
+    pub cached: bool,
+}
+
+pub struct Row {
+    pub item: ScanItem,
+    pub selected: bool,
+    pub ai: Option<AiNote>,
+}
+
+pub struct DiskInfo {
+    pub name: String,
+    pub total: u64,
+    pub free: u64,
+}
+
+pub struct ScanJob {
+    pub progress: Arc<Progress>,
+    pub cancel: Arc<AtomicBool>,
+    pub rx: Receiver<ScanOutput>,
+    pub started: Instant,
+}
+
+pub struct CleanJob {
+    pub cancel: Arc<AtomicBool>,
+    pub done: Arc<AtomicUsize>,
+    pub total: usize,
+    pub rx: Receiver<CleanReport>,
+}
+
+/// What the confirmation modal is currently asking.
+pub struct Confirm {
+    pub dry_run: bool,
+    pub permanent: bool,
+    pub typed: String,
+}
+
+pub struct App {
+    pub cfg: Config,
+    pub cfg_draft: Config,
+    pub cfg_path: PathBuf,
+    pub db: Option<Db>,
+    pub rt: tokio::runtime::Runtime,
+    pub view: View,
+    pub disk: Option<DiskInfo>,
+    pub scan_paths_text: String,
+
+    pub last: Option<ScanSummary>,
+    pub scan: Option<ScanJob>,
+    pub rows: Vec<Row>,
+    pub visible: Vec<usize>,
+    pub view_dirty: bool,
+    pub filter_cat: Option<Category>,
+    pub filter_text: String,
+    pub sort: (SortKey, bool),
+
+    pub confirm: Option<Confirm>,
+    pub clean_job: Option<CleanJob>,
+    pub report: Option<CleanReport>,
+    pub confirm_clear_cache: bool,
+
+    pub ai: Option<Arc<AiService>>,
+    pub ai_error: Option<String>,
+    pub ai_confirm: Option<usize>,
+    pub ai_inflight: HashSet<PathBuf>,
+    pub ai_tx: Sender<(PathBuf, Result<AiAnswer, String>)>,
+    pub ai_rx: Receiver<(PathBuf, Result<AiAnswer, String>)>,
+
+    pub models: Vec<String>,
+    pub models_for: String,
+    pub models_job: Option<Receiver<Result<Vec<String>, String>>>,
+    pub test_job: Option<Receiver<Result<String, String>>>,
+    pub test_status: Option<(bool, String)>,
+    pub model_filter: String,
+
+    pub toast: Option<(String, Instant)>,
+    pub logo: egui::TextureHandle,
+}
+
+fn detect_disk() -> Option<DiskInfo> {
+    let home = draxbyte::config::home_dir();
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    disks
+        .list()
+        .iter()
+        .filter(|d| home.starts_with(d.mount_point()))
+        .max_by_key(|d| d.mount_point().as_os_str().len())
+        .map(|d| DiskInfo {
+            name: d.mount_point().to_string_lossy().into_owned(),
+            total: d.total_space(),
+            free: d.available_space(),
+        })
+}
+
+impl App {
+    pub fn new(cc: &eframe::CreationContext<'_>, cfg: Config, cfg_path: PathBuf) -> Self {
+        ui::apply_theme(&cc.egui_ctx);
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+        let mut db = Db::open(&data_dir().join("draxbyte.db")).ok();
+        let (last, rows) = match db
+            .as_mut()
+            .and_then(|d| d.last_summary().ok().flatten().map(|s| (d, s)))
+        {
+            Some((d, s)) => {
+                let items = d.load_items(s.session_id).unwrap_or_default();
+                (
+                    Some(s),
+                    items
+                        .into_iter()
+                        .map(|item| Row {
+                            item,
+                            selected: false,
+                            ai: None,
+                        })
+                        .collect(),
+                )
+            }
+            None => (None, Vec::new()),
+        };
+        let (ai_tx, ai_rx) = channel();
+        let scan_paths_text = cfg.scan.default_paths.join("; ");
+        let logo = cc.egui_ctx.load_texture(
+            "logo",
+            egui::ColorImage::from_rgba_unmultiplied([256, 256], ui::ICON_RGBA),
+            egui::TextureOptions::LINEAR,
+        );
+        let mut app = Self {
+            logo,
+            cfg_draft: cfg.clone(),
+            cfg,
+            cfg_path,
+            db,
+            rt,
+            view: View::Home,
+            disk: detect_disk(),
+            scan_paths_text,
+            last,
+            scan: None,
+            rows,
+            visible: Vec::new(),
+            view_dirty: true,
+            filter_cat: None,
+            filter_text: String::new(),
+            sort: (SortKey::Size, false),
+            confirm: None,
+            clean_job: None,
+            report: None,
+            confirm_clear_cache: false,
+            ai: None,
+            ai_error: None,
+            ai_confirm: None,
+            ai_inflight: HashSet::new(),
+            ai_tx,
+            ai_rx,
+            models: Vec::new(),
+            models_for: String::new(),
+            models_job: None,
+            test_job: None,
+            test_status: None,
+            model_filter: String::new(),
+            toast: None,
+        };
+        app.rebuild_ai();
+        app
+    }
+
+    pub fn toast(&mut self, msg: impl Into<String>) {
+        self.toast = Some((msg.into(), Instant::now()));
+    }
+
+    /// (Re)creates the AI service from the current config. Nothing network-related
+    /// happens here; when AI is off the service simply does not exist.
+    pub fn rebuild_ai(&mut self) {
+        self.ai = None;
+        self.ai_error = None;
+        if !self.cfg.ai.enabled {
+            return;
+        }
+        match AiService::new(&self.cfg.ai) {
+            Ok(s) => self.ai = Some(Arc::new(s)),
+            Err(e) => self.ai_error = Some(e.to_string()),
+        }
+    }
+
+    // ---- scan -------------------------------------------------------------
+
+    pub fn parsed_scan_paths(&self) -> Vec<PathBuf> {
+        self.scan_paths_text
+            .split(';')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(expand_path)
+            .collect()
+    }
+
+    pub fn start_scan(&mut self, ctx: &egui::Context) {
+        if self.scan.is_some() || self.clean_job.is_some() {
+            return;
+        }
+        let paths = self.parsed_scan_paths();
+        if paths.is_empty() {
+            self.toast("Taranacak yol yok");
+            return;
+        }
+        let opts = ScanOptions::from_config(&self.cfg, Some(paths));
+        let progress = Arc::new(Progress::default());
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = channel();
+        {
+            let (progress, cancel, ctx) = (progress.clone(), cancel.clone(), ctx.clone());
+            std::thread::spawn(move || {
+                let out = scanner::scan(&opts, &cancel, &progress);
+                let _ = tx.send(out);
+                ctx.request_repaint();
+            });
+        }
+        self.scan = Some(ScanJob {
+            progress,
+            cancel,
+            rx,
+            started: Instant::now(),
+        });
+        self.view = View::Scan;
+    }
+
+    pub fn cancel_scan(&self) {
+        if let Some(j) = &self.scan {
+            j.cancel.store(true, Relaxed);
+        }
+    }
+
+    // ---- selection / view -------------------------------------------------
+
+    pub fn refresh_view(&mut self) {
+        let text = self.filter_text.to_lowercase();
+        let mut v: Vec<usize> = (0..self.rows.len())
+            .filter(|&i| {
+                let r = &self.rows[i];
+                self.filter_cat.is_none_or(|c| r.item.category == c)
+                    && (text.is_empty()
+                        || r.item.path.to_string_lossy().to_lowercase().contains(&text))
+            })
+            .collect();
+        let (key, asc) = self.sort;
+        v.sort_by(|&a, &b| {
+            let (x, y) = (&self.rows[a].item, &self.rows[b].item);
+            let o = match key {
+                SortKey::Size => x.size.cmp(&y.size),
+                SortKey::Age => y.mtime.cmp(&x.mtime), // older (smaller mtime) = larger age
+                SortKey::Category => x.category.cmp(&y.category),
+                SortKey::Path => x.path.cmp(&y.path),
+            };
+            if asc {
+                o
+            } else {
+                o.reverse()
+            }
+        });
+        self.visible = v;
+        self.view_dirty = false;
+    }
+
+    pub fn select_category(&mut self, cat: Category) {
+        for r in &mut self.rows {
+            r.selected = r.item.category == cat;
+        }
+    }
+
+    pub fn selected(&self) -> impl Iterator<Item = &Row> {
+        self.rows
+            .iter()
+            .filter(|r| r.selected && r.item.category != Category::Red)
+    }
+
+    // ---- clean ------------------------------------------------------------
+
+    pub fn start_clean(&mut self, ctx: &egui::Context, opts: CleanOptions) {
+        if self.clean_job.is_some() || self.scan.is_some() {
+            return;
+        }
+        let items: Vec<ScanItem> = self.selected().map(|r| r.item.clone()).collect();
+        if items.is_empty() {
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        let done = Arc::new(AtomicUsize::new(0));
+        let (tx, rx) = channel();
+        let total = items.len();
+        {
+            let (cancel, done, ctx) = (cancel.clone(), done.clone(), ctx.clone());
+            std::thread::spawn(move || {
+                let rep = cleaner::clean(&items, opts, &cancel, |d, _| {
+                    done.store(d, Relaxed);
+                    ctx.request_repaint();
+                });
+                let _ = tx.send(rep);
+                ctx.request_repaint();
+            });
+        }
+        self.clean_job = Some(CleanJob {
+            cancel,
+            done,
+            total,
+            rx,
+        });
+        self.report = None;
+        self.view = View::Clean;
+    }
+
+    pub fn undo_last(&mut self) {
+        let Some(rep) = &self.report else { return };
+        match cleaner::undo(rep) {
+            Ok(0) => self.toast("Geri alınacak öğe bulunamadı (Çöp Kutusu boşaltılmış olabilir)"),
+            Ok(n) => {
+                self.toast(format!("{n} öğe Çöp Kutusu'ndan geri getirildi"));
+                if let Some(rep) = &mut self.report {
+                    for e in rep
+                        .entries
+                        .iter_mut()
+                        .filter(|e| e.outcome == Outcome::Trashed)
+                    {
+                        e.outcome = Outcome::Skipped("geri alındı".into());
+                    }
+                    rep.freed_bytes = 0;
+                }
+            }
+            Err(e) => self.toast(format!("Geri alma başarısız: {e}")),
+        }
+    }
+
+    // ---- AI ---------------------------------------------------------------
+
+    /// Called only after the user approved (or when the answer is already cached and free).
+    pub fn ask_ai(&mut self, ctx: &egui::Context, row_idx: usize) {
+        let Some(svc) = self.ai.clone() else { return };
+        let Some(row) = self.rows.get(row_idx) else {
+            return;
+        };
+        let item = row.item.clone();
+        if !self.ai_inflight.insert(item.path.clone()) {
+            return;
+        }
+        let (tx, ctx) = (self.ai_tx.clone(), ctx.clone());
+        self.rt.spawn(async move {
+            let res = svc.ask(&item).await.map_err(|e| e.to_string());
+            let _ = tx.send((item.path.clone(), res));
+            ctx.request_repaint();
+        });
+    }
+
+    // ---- provider models / connection test (user-initiated, from Settings) ----
+
+    /// Identifies provider + address so a fetched model list is dropped when either changes.
+    pub fn provider_key(&self) -> String {
+        format!(
+            "{}|{}",
+            self.cfg_draft.ai.provider,
+            self.cfg_draft.ai.base_url.trim()
+        )
+    }
+
+    pub fn fetch_models(&mut self, ctx: &egui::Context) {
+        let creds = match draxbyte::ai::providers::resolve(&self.cfg_draft.ai) {
+            Ok(c) => c,
+            Err(e) => {
+                self.test_status = Some((false, e.to_string()));
+                return;
+            }
+        };
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        self.rt.spawn(async move {
+            let _ = tx.send(
+                draxbyte::ai::providers::list_models(&creds)
+                    .await
+                    .map_err(|e| e.to_string()),
+            );
+            ctx.request_repaint();
+        });
+        self.models_job = Some(rx);
+        self.models_for = self.provider_key();
+        self.test_status = None;
+    }
+
+    pub fn test_connection(&mut self, ctx: &egui::Context) {
+        let creds = match draxbyte::ai::providers::resolve(&self.cfg_draft.ai) {
+            Ok(c) => c,
+            Err(e) => {
+                self.test_status = Some((false, e.to_string()));
+                return;
+            }
+        };
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        self.rt.spawn(async move {
+            let r = draxbyte::ai::providers::check(&creds)
+                .await
+                .map(|(ms, tok)| format!("Bağlantı tamam · {ms} ms · {tok} token"))
+                .map_err(|e| e.to_string());
+            let _ = tx.send(r);
+            ctx.request_repaint();
+        });
+        self.test_job = Some(rx);
+        self.test_status = None;
+    }
+
+    // ---- polling ----------------------------------------------------------
+
+    pub fn poll_jobs(&mut self) {
+        if let Some(job) = &self.scan {
+            if let Ok(out) = job.rx.try_recv() {
+                self.scan = None;
+                self.finish_scan(out);
+            }
+        }
+        if let Some(job) = &self.clean_job {
+            if let Ok(rep) = job.rx.try_recv() {
+                self.clean_job = None;
+                if let Some(db) = &mut self.db {
+                    let _ = db.log_clean(&rep);
+                }
+                let gone: HashSet<&PathBuf> = rep
+                    .entries
+                    .iter()
+                    .filter(|e| matches!(e.outcome, Outcome::Trashed | Outcome::Deleted))
+                    .map(|e| &e.path)
+                    .collect();
+                self.rows.retain(|r| !gone.contains(&r.item.path));
+                self.view_dirty = true;
+                self.report = Some(rep);
+            }
+        }
+        if let Some(rx) = &self.models_job {
+            if let Ok(res) = rx.try_recv() {
+                self.models_job = None;
+                match res {
+                    Ok(list) => {
+                        self.test_status = Some((true, format!("{} model bulundu", list.len())));
+                        self.models = list;
+                    }
+                    Err(e) => self.test_status = Some((false, e)),
+                }
+            }
+        }
+        if let Some(rx) = &self.test_job {
+            if let Ok(res) = rx.try_recv() {
+                self.test_job = None;
+                self.test_status = Some(match res {
+                    Ok(m) => (true, m),
+                    Err(e) => (false, e),
+                });
+            }
+        }
+        while let Ok((path, res)) = self.ai_rx.try_recv() {
+            self.ai_inflight.remove(&path);
+            match res {
+                Ok(a) => {
+                    if let Some(r) = self.rows.iter_mut().find(|r| r.item.path == path) {
+                        r.ai = Some(AiNote {
+                            text: a.text,
+                            cached: a.cached,
+                        });
+                    }
+                }
+                Err(e) => self.toast(format!("AI: {e}")),
+            }
+        }
+        if let Some((_, at)) = &self.toast {
+            if at.elapsed().as_secs() >= 6 {
+                self.toast = None;
+            }
+        }
+    }
+
+    fn finish_scan(&mut self, out: ScanOutput) {
+        let mut summary = out.summary;
+        if !out.cancelled {
+            if let Some(db) = &mut self.db {
+                match db.save_session(&summary, &out.items) {
+                    Ok(id) => summary.session_id = id,
+                    Err(e) => tracing::warn!("scan could not be saved: {e}"),
+                }
+            }
+        }
+        self.rows = out
+            .items
+            .into_iter()
+            .map(|item| Row {
+                item,
+                selected: false,
+                ai: None,
+            })
+            .collect();
+        self.view_dirty = true;
+        self.filter_cat = None;
+        self.last = Some(summary);
+        self.disk = detect_disk();
+        self.view = View::Results;
+        if out.cancelled {
+            self.toast("Tarama iptal edildi (kısmi sonuçlar gösteriliyor, kaydedilmedi)");
+        }
+    }
+}

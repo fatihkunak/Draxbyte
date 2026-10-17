@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="docs/screenshots/logo.png" width="120" alt="Draxbyte logosu">
 </p>
 
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Türkçe</b> · <a href="README.en.md">English</a> · <a href="docs/KULLANIM.md">Kullanım kılavuzu</a> · <a href="docs/USAGE.md">User guide</a>
+  <b>Türkçe</b> · <a href="README.en.md">English</a> · <a href="docs/KULLANIM.md">Kullanım kılavuzu</a> · <a href="docs/USAGE.md">User guide</a> · <a href="https://github.com/fatihkunak/Draxbyte/wiki">Wiki</a>
 </p>
 
 <p align="center">

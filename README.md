@@ -209,9 +209,17 @@ Bir ikiliye güvenmek istemezsen kaynaktan derle (yukarıda).
 
 ## Platformlar
 
-Geliştirme ve test **Windows 11**'de yapıldı. Kod Linux ve macOS için de platforma duyarlı yazıldı (Çöp Kutusu,
-kilit denetimi, korunan yollar) ama bu makinelerde derlenip denenmedi. macOS'ta programatik geri alma yoktur
-(Çöp Kutusu'ndan elle geri al).
+Geliştirme **Windows 11**'de yapıldı.
+
+**macOS:** [Releases](https://github.com/fatihkunak/Draxbyte/releases/latest)'tan `Draxbyte-*-macos.dmg` (Intel + Apple Silicon).
+GitHub'ın macOS makinesinde birim testleri ve sahte bir Mac home'u üzerinde tarama testi (`scripts/macos/smoke.sh`)
+çalıştırılır: `.app` paketleri, iCloud/CloudStorage, Fotoğraflar kitaplığı, Mail/Messages/Keychains önerilmez.
+Arayüz gerçek bir Mac'te henüz elle denenmedi. Uygulama Apple tarafından **imzalı/noter onaylı değil**: ilk açılışta
+sağ tık → Aç (olmazsa `xattr -dr com.apple.quarantine /Applications/Draxbyte.app`). macOS'ta programatik geri alma
+yoktur (Çöp Kutusu'ndan elle geri al), uygulama içi güncelleme yalnızca Windows'ta vardır. Kendin üretmek için:
+`bash scripts/macos/build-dmg.sh`.
+
+**Linux:** kod platforma duyarlı yazıldı ama derlenip denenmedi.
 
 ## Geliştirme
 

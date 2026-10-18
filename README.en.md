@@ -200,8 +200,16 @@ If you would rather not trust a binary, build it from source (see above).
 
 ## Platforms
 
-Developed and tested on **Windows 11**. The code is platform-aware for Linux and macOS (Trash, lock check,
-protected paths) but has not been built or tried there. On macOS there is no programmatic undo.
+Developed on **Windows 11**.
+
+**macOS:** download `Draxbyte-*-macos.dmg` (Intel + Apple Silicon) from [Releases](https://github.com/fatihkunak/Draxbyte/releases/latest).
+GitHub's macOS runner runs the unit tests and a scan against a fake Mac home (`scripts/macos/smoke.sh`): `.app` bundles,
+iCloud/CloudStorage, the Photos library and Mail/Messages/Keychains are never offered. The GUI has not yet been tried by
+hand on a real Mac. The app is **not signed or notarized by Apple**: on first launch right-click → Open (or
+`xattr -dr com.apple.quarantine /Applications/Draxbyte.app`). There is no programmatic undo on macOS (restore from the
+Trash by hand) and in-app update is Windows-only. Build it yourself with `bash scripts/macos/build-dmg.sh`.
+
+**Linux:** platform-aware code, but not built or tried.
 
 ## Development
 

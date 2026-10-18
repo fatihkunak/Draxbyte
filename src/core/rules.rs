@@ -64,8 +64,14 @@ fn known_locations() -> Vec<String> {
                 &local.join("Microsoft").join("Windows").join("INetCache"),
             ));
         }
-        let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
-        v.push(norm(&Path::new(&sysroot).join("Temp")));
+        // System temp/log/cache folders. The ones needing care are yellow instead (see `yellow_locations`).
+        let yellow: Vec<String> = yellow_locations().into_iter().map(|(p, _, _)| p).collect();
+        for d in crate::core::syslocs::windows_system_dirs() {
+            let n = norm(&d);
+            if !yellow.contains(&n) {
+                v.push(n);
+            }
+        }
     } else {
         v.push("/tmp".into());
         v.push("/var/tmp".into());
@@ -80,9 +86,30 @@ fn known_locations() -> Vec<String> {
     v
 }
 
+/// Folders whose contents are removable but should not be one-click: (normalised path, rule,
+/// `true` = the folder itself is the item, `false` = each direct child is an item).
+fn yellow_locations() -> Vec<(String, &'static str, bool)> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    crate::core::syslocs::windows_system_dirs()
+        .into_iter()
+        .filter_map(|d| {
+            let n = norm(&d);
+            let name = name_lc(&d);
+            match name.as_str() {
+                "windows.old" => Some((n, "windows_old", true)),
+                "$patchcache$" | "package cache" => Some((n, "installer_cache", false)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 pub struct RuleEngine {
     cfg: RulesConfig,
     locations: Vec<String>,
+    yellow: Vec<(String, &'static str, bool)>,
     now: i64,
 }
 
@@ -112,6 +139,7 @@ impl RuleEngine {
         Self {
             cfg: cfg.clone(),
             locations: known_locations(),
+            yellow: yellow_locations(),
             now,
         }
     }
@@ -121,6 +149,7 @@ impl RuleEngine {
         Self {
             cfg: cfg.clone(),
             locations,
+            yellow: Vec::new(),
             now,
         }
     }
@@ -138,6 +167,25 @@ impl RuleEngine {
         self.locations
             .iter()
             .any(|l| s.starts_with(&format!("{}/", l)))
+    }
+
+    /// Rule id when `path` is (or sits directly in) a yellow system folder.
+    fn yellow_dir_rule(&self, path: &Path) -> Option<&'static str> {
+        let s = norm(path);
+        let parent = path.parent().map(norm).unwrap_or_default();
+        self.yellow
+            .iter()
+            .find(|(loc, _, itself)| if *itself { s == *loc } else { parent == *loc })
+            .map(|(_, rule, _)| *rule)
+    }
+
+    /// Rule id when a loose file lies anywhere inside a yellow system folder.
+    fn yellow_file_rule(&self, path: &Path) -> Option<&'static str> {
+        let s = norm(path);
+        self.yellow
+            .iter()
+            .find(|(loc, _, _)| s.starts_with(&format!("{}/", loc)))
+            .map(|(_, rule, _)| *rule)
     }
 
     fn direct_child_of_location(&self, path: &Path) -> bool {
@@ -160,6 +208,7 @@ impl RuleEngine {
             || CACHE_DIR_NAMES.contains(&name.as_str())
             || (name == "build" && parent_name == "android")
             || is_gradle_build_dir(dir)
+            || self.yellow_dir_rule(dir).is_some()
         {
             return true;
         }
@@ -188,6 +237,23 @@ impl RuleEngine {
         let name = name_lc(path);
         let parent_name = path.parent().map(name_lc).unwrap_or_default();
 
+        match self.yellow_dir_rule(path) {
+            Some("windows_old") => {
+                return v(
+                    Category::Yellow,
+                    "windows_old",
+                    "Önceki Windows kurulumu; silince eski sürüme dönülemez",
+                )
+            }
+            Some(rule) => {
+                return v(
+                    Category::Yellow,
+                    rule,
+                    "Yükleyici önbelleği; silinirse bazı programların onarımı/kaldırması kaynak ister",
+                )
+            }
+            None => {}
+        }
         if name == "node_modules" {
             return v(
                 Category::Yellow,
@@ -287,6 +353,13 @@ impl RuleEngine {
             } else {
                 None
             };
+        }
+        if let Some(rule) = self.yellow_file_rule(path) {
+            return v(
+                Category::Yellow,
+                rule,
+                "Yükleyici önbelleği; silinirse bazı programların onarımı/kaldırması kaynak ister",
+            );
         }
         if self.in_known_location(path) {
             return if self.old_enough(mtime) {

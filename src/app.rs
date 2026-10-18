@@ -356,7 +356,10 @@ impl App {
             self.toast(t("Taranacak yol yok", "No path to scan"));
             return;
         }
-        let opts = ScanOptions::from_config(&self.cfg, Some(paths));
+        // Untouched field = "scan everything configured" (system folders, all drives); an edited
+        // field is taken literally.
+        let untouched = self.scan_paths_text == self.cfg.scan.default_paths.join("; ");
+        let opts = ScanOptions::from_config(&self.cfg, (!untouched).then_some(paths));
         let progress = Arc::new(Progress::default());
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = channel();

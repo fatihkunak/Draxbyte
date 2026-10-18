@@ -66,6 +66,9 @@ fn lists() -> &'static Lists {
             let drive = sysroot.chars().take(2).collect::<String>();
             trees.push(norm(Path::new(&sysroot)));
             exceptions.push(norm(&Path::new(&sysroot).join("Temp")));
+            for d in crate::core::syslocs::windows_system_dirs() {
+                exceptions.push(norm(&d));
+            }
             for var in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
                 if let Ok(v) = std::env::var(var) {
                     trees.push(norm(Path::new(&v)));
@@ -141,7 +144,7 @@ fn lists() -> &'static Lists {
     })
 }
 
-fn is_root(p: &Path) -> bool {
+pub fn is_root(p: &Path) -> bool {
     p.parent().is_none()
         || (cfg!(windows) && {
             let s = norm(p);

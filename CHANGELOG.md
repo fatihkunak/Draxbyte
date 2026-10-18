@@ -1,5 +1,14 @@
 ﻿# Changelog
 
+## 0.2.2 — 2026-10-18
+- New: **macOS build** (`Draxbyte-0.2.2-macos.dmg`, Intel + Apple Silicon, ad-hoc signed — not notarized: first launch right-click → Open). Unit tests and a scan against a fake Mac home run on GitHub's macOS runner (`scripts/macos/smoke.sh`)
+- Safety (macOS): contents of `.app`, `.photoslibrary`, `.musiclibrary`, `.tvlibrary` packages and `~/Library/{Mobile Documents, CloudStorage, Keychains, Mail, Messages, Containers, Group Containers}` are never offered — deleting those would also delete cloud copies or break apps. `~/Library/Caches` stays cleanable
+- Fix (macOS): the Docker check works when the app is started from Finder (GUI apps get a minimal PATH)
+- Fix: a unit-test fixture used `/lib`, which is a protected system tree on Unix
+- macOS limits: no in-app undo (restore from the Trash by hand), no in-app update. The GUI has not been tried by hand on a real Mac yet
+
+Türkçe özet: macOS sürümü (.dmg) eklendi; `.app`, Fotoğraflar kitaplığı, iCloud/CloudStorage, Mail/Messages/Keychains asla önerilmez; Docker kontrolü Finder'dan açılınca da çalışır. Mac'te uygulama içi geri alma ve güncelleme yok.
+
 ## 0.2.1 — 2026-10-17
 - New: in-app update. About → "Update now" downloads `Draxbyte-Setup.exe`, verifies its SHA256 (from the release's `SHA256SUMS.txt`) and the pinned signing certificate, then starts the installer and closes the app. Nothing runs before verification; any failure deletes the file and shows the error
 - Setup retries copying the exe for up to 15 s so it can replace a Draxbyte that is still closing

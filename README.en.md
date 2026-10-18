@@ -50,6 +50,7 @@ Deleted items go to the Recycle Bin by default and can be restored.
 - 🔓 **Nothing out of reach** — on Windows it asks for administrator rights at start (decline and it still opens; Settings turns it off); a scan lists every path it could not read **with the reason** (access denied / in use) and offers the one-click fix (Full Disk Access on macOS)
 - 🗺️ **Disk Map** — what is taking the space? Coloured tiles sized by use (a treemap); click a folder to look inside; read-only
 - 👯 **Duplicate Files** — files with exactly the same content (size → first/last 64 KB → full SHA-256); at least one copy of every group always stays; deletion goes to the Recycle Bin
+- 🧹 **Full Optimization** — cleanup, duplicates, Docker (part by part), Recycle Bin and memory in one flow: you pick the scope, review a read-only analysis and approve; nothing changes before the approval. `draxbyte optimize`
 - 🧙 **Install and uninstall wizard** — `Draxbyte-Setup.exe` installs step by step with the same theme and logo (Windows) / opened from the disk image it installs into Applications (macOS); uninstall is a wizard too and removes only its own files
 - 🌍 **English and Türkçe** UI, automatic or your choice
 - 📦 **One ~16 MB exe**, offline, no telemetry, MIT licensed

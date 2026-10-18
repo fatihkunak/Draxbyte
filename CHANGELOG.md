@@ -1,6 +1,6 @@
 ﻿# Changelog
 
-## Unreleased
+## 0.5.0 — 2026-10-19
 - New: **Full Optimization wizard** (scope → read-only analysis → approval → run → result). Safe cleanup (green items only), duplicates (oldest copy stays), Docker piece by piece (build cache, untagged images, networks by default; stopped containers, unused images and volumes only when ticked, with the list shown first), Recycle Bin, memory (Windows). Nothing changes before the approval; files go to the Recycle Bin first. `draxbyte optimize` (dry run unless `--apply`)
 
 ## 0.4.0 — 2026-10-19

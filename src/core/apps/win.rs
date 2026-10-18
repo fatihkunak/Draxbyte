@@ -578,7 +578,10 @@ impl<'a> Finder<'a> {
         Finder { app, env, variants, nested_variants: nested, publisher_words, shared_publisher, out: Vec::new(), seen: Default::default() }
     }
 
-    fn push(&mut self, l: Leftover) {
+    fn push(&mut self, mut l: Leftover) {
+        if matches!(l.kind, LeftoverKind::Path { .. }) {
+            l.label = l.label.trim_end_matches(['\\', '/']).to_string();
+        }
         if self.seen.insert(l.label.to_lowercase()) {
             self.out.push(l);
         }
@@ -596,7 +599,8 @@ impl<'a> Finder<'a> {
         }
         let Ok(meta) = std::fs::symlink_metadata(p) else { return };
         // Browser/app profiles hold the user's own data: shown, but not pre-selected.
-        let user_data = p.components().any(|c| c.as_os_str().to_string_lossy().eq_ignore_ascii_case("user data"));
+        let user_data = p.components().any(|c| c.as_os_str().to_string_lossy().eq_ignore_ascii_case("user data"))
+            || (meta.is_dir() && p.join("User Data").is_dir());
         let (conf, why) = if user_data {
             (Confidence::Medium, "may contain your profile (bookmarks, saved passwords, settings)".to_string())
         } else {
@@ -776,6 +780,55 @@ impl<'a> Finder<'a> {
             }
         }
     }
+
+    /// Edge ships its updater as a separate component with its own folder, services and tasks.
+    fn scan_vendor_extras(&mut self) {
+        let is_edge = self.app.name.eq_ignore_ascii_case("Microsoft Edge")
+            && self.app.publisher.to_lowercase().contains("microsoft");
+        if !is_edge {
+            return;
+        }
+        for pf in self.env.roots.program_files.clone() {
+            let p = pf.join("Microsoft").join("EdgeUpdate");
+            if p.is_dir() {
+                self.path_item(&p, Confidence::High, "Edge's updater component");
+            }
+        }
+        if self.env.services {
+            for name in ["edgeupdate", "edgeupdatem"] {
+                let key = format!(r"SYSTEM\CurrentControlSet\Services\{name}");
+                if predef(Hive::Machine).open_subkey_with_flags(&key, KEY_READ).is_ok() {
+                    self.push(Leftover {
+                        kind: LeftoverKind::Service(name.to_string()),
+                        label: format!("service {name}"),
+                        size: 0,
+                        confidence: Confidence::High,
+                        why: "Edge's update service".into(),
+                    });
+                }
+            }
+        }
+        if self.env.tasks {
+            let script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; \
+                Get-ScheduledTask -TaskName 'MicrosoftEdgeUpdate*' -ErrorAction SilentlyContinue | \
+                Select-Object @{n='Name';e={$_.TaskName}},@{n='Path';e={$_.TaskPath}} | ConvertTo-Json -Compress";
+            if let Some(v) = powershell_json(script) {
+                for t in json_items(v) {
+                    let path = t["Path"].as_str().unwrap_or("\\");
+                    let name = t["Name"].as_str().unwrap_or_default();
+                    if !name.is_empty() {
+                        self.push(Leftover {
+                            kind: LeftoverKind::Task(format!("{path}{name}")),
+                            label: format!("task {path}{name}"),
+                            size: 0,
+                            confidence: Confidence::High,
+                            why: "Edge's update task".into(),
+                        });
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Everything that still belongs to `app`: its folders, shortcuts, registry keys, autostart
@@ -790,9 +843,33 @@ pub fn find_leftovers(app: &InstalledApp, others: &[InstalledApp], env: &ScanEnv
     f.scan_shortcuts();
     f.scan_registry();
     f.scan_by_install_path();
-    let mut v = f.out;
+    f.scan_vendor_extras();
+    let mut v = prune_nested(f.out);
     v.sort_by(|a, b| a.confidence.cmp(&b.confidence).then(b.size.cmp(&a.size)));
     v
+}
+
+/// A folder inside another listed folder of the same or better confidence is redundant: removing
+/// the outer one removes it (and its size would be counted twice).
+fn prune_nested(items: Vec<Leftover>) -> Vec<Leftover> {
+    let paths: Vec<(usize, PathBuf, Confidence)> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.kind, LeftoverKind::Path { is_dir: true }))
+        .map(|(i, l)| (i, PathBuf::from(&l.label), l.confidence))
+        .collect();
+    items
+        .into_iter()
+        .enumerate()
+        .filter(|(i, l)| {
+            if !matches!(l.kind, LeftoverKind::Path { .. }) {
+                return true;
+            }
+            let me = PathBuf::from(&l.label);
+            !paths.iter().any(|(j, p, c)| j != i && *c <= l.confidence && me != *p && is_under(&me, p))
+        })
+        .map(|(_, l)| l)
+        .collect()
 }
 
 // ---- removal ---------------------------------------------------------------------------------
@@ -1197,5 +1274,65 @@ mod tests {
         let rep = remove_leftovers(&app, &evil, &RemoveOptions { permanent: true, backup_dir: tmp.path().join("b") }, &env);
         assert_eq!(rep.failed(), 2);
         assert!(victim.join("thesis.docx").exists());
+    }
+
+    fn scratch_app(name: &str, publisher: &str, loc: &Path) -> InstalledApp {
+        InstalledApp {
+            id: name.into(), name: name.into(), publisher: publisher.into(), version: String::new(), kind: AppKind::Win32,
+            install_location: Some(loc.to_path_buf()), size_bytes: 0, install_date: None, last_used: None, uninstall_cmd: None,
+            quiet_uninstall_cmd: None, removable: Removability::Normal, reg: None, package_id: None, system_component: false,
+            icon_exe: None,
+        }
+    }
+
+    fn scratch_env(t: &Path) -> (ScanEnv, PathBuf, PathBuf) {
+        let pf = t.join("Program Files");
+        let local = t.join("AppData/Local");
+        for d in [&pf, &local, &t.join("AppData/Roaming"), &t.join("ProgramData")] {
+            fs::create_dir_all(d).unwrap();
+        }
+        let env = ScanEnv {
+            roots: Roots {
+                program_files: vec![pf.clone()],
+                program_data: Some(t.join("ProgramData")),
+                local_appdata: Some(local.clone()),
+                roaming_appdata: Some(t.join("AppData/Roaming")),
+                ..Default::default()
+            },
+            reg_roots: vec![],
+            services: false,
+            tasks: false,
+        };
+        (env, pf, local)
+    }
+
+    #[test]
+    fn browser_profile_is_probable_and_not_preselected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, pf, local) = scratch_env(tmp.path());
+        let install = pf.join("Zorb Browser/Application");
+        fs::create_dir_all(&install).unwrap();
+        fs::create_dir_all(local.join("Zorb/Browser/User Data/Default")).unwrap();
+        fs::write(local.join("Zorb/Browser/User Data/Default/Bookmarks"), b"my bookmarks").unwrap();
+        let app = scratch_app("Zorb Browser", "Zorb LLC", &install);
+        let found = find_leftovers(&app, &[], &env);
+        let profile = found.iter().find(|l| l.label.ends_with(r"Zorb\Browser") || l.label.ends_with("Zorb/Browser")).expect("profile folder listed");
+        assert_eq!(profile.confidence, Confidence::Medium, "{:?}", found.iter().map(|l| (&l.label, l.confidence)).collect::<Vec<_>>());
+        assert!(profile.why.contains("profile"));
+    }
+
+    #[test]
+    fn folder_inside_a_listed_folder_is_not_listed_twice() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (env, pf, _) = scratch_env(tmp.path());
+        let install = pf.join("Zorb Tool");
+        fs::create_dir_all(install.join("bin")).unwrap();
+        let app = scratch_app("Zorb Tool", "Zorb LLC", &install);
+        let mut with_slash = install.clone().into_os_string();
+        with_slash.push("\\");
+        let app = InstalledApp { install_location: Some(PathBuf::from(with_slash)), ..app };
+        let found = find_leftovers(&app, &[], &env);
+        let paths: Vec<_> = found.iter().filter(|l| matches!(l.kind, LeftoverKind::Path { .. })).collect();
+        assert_eq!(paths.len(), 1, "{:?}", paths.iter().map(|l| &l.label).collect::<Vec<_>>());
     }
 }

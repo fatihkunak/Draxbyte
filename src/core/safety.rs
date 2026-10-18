@@ -20,6 +20,27 @@ pub fn norm(p: &Path) -> String {
     s
 }
 
+/// Under the home folder on macOS; matched case-folded like everything else here.
+const MAC_HOME_TREES: &[&str] = &[
+    "Library/Mobile Documents",
+    "Library/CloudStorage",
+    "Library/Keychains",
+    "Library/Mail",
+    "Library/Messages",
+    "Library/Containers",
+    "Library/Group Containers",
+];
+
+/// Folder suffixes that are one opaque package on macOS: its insides are never offered
+/// (an app bundle breaks when a file is removed; a Photos library is a database).
+const MAC_BUNDLE_SUFFIXES: &[&str] = &[".app", ".photoslibrary", ".musiclibrary", ".tvlibrary"];
+
+/// True when any folder component of the (normalised) path is a macOS package.
+fn inside_mac_bundle(s: &str) -> bool {
+    s.split('/')
+        .any(|c| MAC_BUNDLE_SUFFIXES.iter().any(|x| c.len() > x.len() && c.ends_with(x)))
+}
+
 fn under(s: &str, prefix: &str) -> bool {
     s == prefix || s.starts_with(&format!("{}/", prefix.trim_end_matches('/')))
 }
@@ -89,6 +110,13 @@ fn lists() -> &'static Lists {
         for d in [".ssh", ".gnupg", ".aws", ".kube"] {
             trees.push(norm(&home.join(d)));
         }
+        // macOS: cloud-synced and personal-data folders. Deleting from these also deletes
+        // the cloud copy (iCloud Drive, Dropbox, ...) or breaks Mail/Messages/Keychain.
+        if cfg!(target_os = "macos") {
+            for d in MAC_HOME_TREES {
+                trees.push(norm(&home.join(d)));
+            }
+        }
         // Our own data (config, caches, trash log).
         trees.push(norm(&crate::config::data_dir()));
 
@@ -131,6 +159,9 @@ pub fn is_protected(path: &Path) -> bool {
     let l = lists();
     if l.exceptions.iter().any(|e| under(&s, e)) {
         return false;
+    }
+    if cfg!(target_os = "macos") && inside_mac_bundle(&s) {
+        return true;
     }
     l.trees.iter().any(|t| under(&s, t))
 }
@@ -274,6 +305,29 @@ mod tests {
         assert!(is_protected_item(&home));
         assert!(is_protected_item(&home.join("Documents")));
         assert!(!is_protected_item(&home.join("Documents").join("big.iso")));
+    }
+
+    #[test]
+    fn mac_bundles_are_recognised() {
+        assert!(inside_mac_bundle("/users/a/applications/foo.app/contents/macos/foo"));
+        assert!(inside_mac_bundle("/users/a/pictures/photos library.photoslibrary/originals/x.heic"));
+        assert!(inside_mac_bundle("/users/a/music/music library.musiclibrary"));
+        assert!(!inside_mac_bundle("/users/a/downloads/big.iso"));
+        // a plain folder or file that merely contains the text is not a bundle
+        assert!(!inside_mac_bundle("/users/a/webapp/readme.md"));
+        assert!(!inside_mac_bundle("/users/a/.app/x"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_cloud_and_personal_data_is_protected() {
+        let home = home_dir();
+        assert!(is_protected(&home.join("Library/Mobile Documents/com~apple~CloudDocs/a.pdf")));
+        assert!(is_protected(&home.join("Library/CloudStorage/Dropbox/a.zip")));
+        assert!(is_protected(&home.join("Library/Mail/V10/x.emlx")));
+        assert!(is_protected(Path::new("/Applications/Safari.app")));
+        // caches stay cleanable
+        assert!(!is_protected(&home.join("Library/Caches/com.foo/x.bin")));
     }
 
     #[test]

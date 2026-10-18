@@ -46,6 +46,9 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 - 📊 **Gösterge paneli** — disk doluluk halkası, en büyük öğeler, türe göre dağılım, tek tıkla eylemler
 - 🤖 **İsteğe bağlı AI** — 14 sağlayıcı (Ollama ve LM Studio yerelde ücretsiz), modeller otomatik getirilir, önbellekli yanıtlar, günlük token limiti, her istek senin onayınla
 - ⌨️ **Komut satırı** — betikler ve sunucular için `draxbyte scan` / `draxbyte clean` (varsayılan kuru çalıştırma)
+- 🗑️ **Programlar** — kurulu programları boyut ve son kullanımla gör; istediğini **üreticinin kaldırıcısı + artıkları** (AppData, kayıt defteri, servis, görev) ile tamamen kaldır; kaldırıcı yoksa ya da üretici engelliyorsa (Edge) **zorla kaldır**. Kayıt defteri önce yedeklenir, geri yüklenebilir
+- 🧠 **Bellek ve Başlangıç** — belleği kimin yediğini gör, seçtiğini kapat (korumalı liste), başlangıçta açılanları kapat/aç; "Belleği boşalt" dürüst bir uyarıyla (etkisi geçicidir)
+- 💽 **Eksiksiz tarama** — her dahili sürücü ve sistem klasörleri (`Windows\Temp`, `Package Cache`, `Windows.old`…) + Geri Dönüşüm Kutusu
 - 🌍 **Türkçe ve English** arayüz, otomatik ya da seçimine göre
 - 📦 **Tek ~16 MB exe**, çevrimdışı, telemetri yok, MIT lisanslı
 
@@ -159,6 +162,12 @@ draxbyte scan [YOLLAR...] [--limit N] [--save]        # listele (hiçbir şeyi d
 draxbyte clean [YOLLAR...] [--yellow]                  # KURU ÇALIŞTIRMA (varsayılan)
 draxbyte clean [YOLLAR...] [--yellow] --apply          # Çöp Kutusu'na taşı
 draxbyte clean [YOLLAR...] --apply --permanent         # kalıcı sil ("SIL" yazdırır)
+draxbyte recycle [--empty]                             # Geri Dönüşüm Kutusu boyutu / boşalt
+draxbyte apps [--unused-days N] [--store] [--hidden]   # kurulu programlar, boyut, son kullanım
+draxbyte uninstall "Ad"                                # neye dokunacağını göster (kuru çalıştırma)
+draxbyte uninstall "Ad" --apply [--force] [--silent]   # kaldırıcı + artıklar; --force: kaldırıcıyı atla
+draxbyte memory [--trim]                               # bellek kullanımı (Windows: --trim geçici boşaltır)
+draxbyte startup [--disable AD | --enable AD]          # Windows'la açılanlar
 ```
 
 Argümansız çalıştırırsan arayüz açılır. `DRAXBYTE_HOME=<klasör>` ile ayar/veri klasörünü değiştirebilirsin

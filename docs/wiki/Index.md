@@ -11,6 +11,11 @@
 - [[Cleaner]] — Çöp Kutusu varsayılan, kalıcı sil ayrı onay, dry-run, geri alma
 - [[Models]] — ScanItem, Category, CleanReport, `ai_key` (path+size+mtime hash)
 
+## 🧰 Sistem araçları
+- [[SysLocs]] — tüm sürücüler + sistem klasörleri taranır; Geri Dönüşüm Kutusu
+- [[Programs]] — kurulu programlar, son kullanım tahmini, kaldırıcı + artık temizliği, zorla kaldırma (Edge dahil), macOS .app
+- [[Memory]] — bellek, program kapatma (korumalı liste), "belleği boşalt", başlangıç yöneticisi
+
 ## 💾 Veri & Ayar
 - [[Config]] — `~/.draxbyte/config.toml`, eksik alanlar varsayılanla dolar
 - [[Db]] — SQLite: scan_session / scan_item (son 5 oturum) + clean_log

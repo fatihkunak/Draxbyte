@@ -43,6 +43,10 @@ Deleted items go to the Recycle Bin by default and can be restored.
 - 📊 **Dashboard** — disk usage ring, largest items, distribution by type, one-click actions
 - 🤖 **Optional AI** — 14 providers (Ollama and LM Studio run locally for free), models fetched automatically, cached answers, daily token limit, every request approved by you
 - ⌨️ **CLI** — `draxbyte scan` / `draxbyte clean` for scripts and servers (dry run by default)
+- 🗑️ **Programs** — installed programs with size and last use; remove any of them with **the vendor's uninstaller plus its leftovers** (AppData, registry, services, tasks), or **by force** when there is no uninstaller or the vendor blocks removal (Edge). The registry is exported first and can be restored
+- 🧠 **Memory & Startup** — see what uses memory, close what you pick (with a protected list), switch startup programs off/on; "Free memory" with an honest warning that its effect is temporary
+- 💽 **Complete scan** — every internal drive and the system folders (`Windows\Temp`, `Package Cache`, `Windows.old`…) plus the Recycle Bin
+- 🍎 **macOS** — `.app` bundles with their `~/Library` files; apps on the sealed system volume (Safari, Mail…) cannot be deleted by anything, so only their caches are cleaned
 - 🌍 **English and Türkçe** UI, automatic or your choice
 - 📦 **One ~16 MB exe**, offline, no telemetry, MIT licensed
 
@@ -150,6 +154,12 @@ draxbyte scan [PATHS...] [--limit N] [--save]        # list (changes nothing)
 draxbyte clean [PATHS...] [--yellow]                  # DRY RUN (default)
 draxbyte clean [PATHS...] [--yellow] --apply          # move to the Recycle Bin
 draxbyte clean [PATHS...] --apply --permanent         # delete for good (asks you to type DELETE)
+draxbyte recycle [--empty]                             # Recycle Bin size / empty it
+draxbyte apps [--unused-days N] [--store] [--hidden]   # installed programs, size, last use
+draxbyte uninstall "Name"                              # show what it would touch (dry run)
+draxbyte uninstall "Name" --apply [--force] [--silent] # uninstaller + leftovers; --force skips the uninstaller
+draxbyte memory [--trim]                               # memory use (Windows: --trim frees idle memory, temporarily)
+draxbyte startup [--disable NAME | --enable NAME]      # what starts with Windows
 ```
 
 Without arguments the GUI opens. `DRAXBYTE_HOME=<folder>` moves the config/data folder (portable use).

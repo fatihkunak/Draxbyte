@@ -18,3 +18,18 @@
 - **Çift dil: satır içi `t("TR","EN")`, dosya tabanlı sözlük değil (10-17).** Neden: iki dil, ~250 metin; anahtarsız yaklaşım çeviriyi çağrı yerinde tutar ve eksik çeviri derleme anında görünür (iki argüman zorunlu). Reddedilen: gettext/fluent (bağımlılık + tek-binary hedefine ağır). Kural gerekçeleri DB'de Türkçe saklanır ama UI kural kimliğinden çevirir.
 - **Dil otomatik algılanır** (Windows locale), `tr*` dışı her şey English. Reddedilen: sabit Türkçe — kamuya açık repoda İngilizce varsayılan daha doğru.
 - **İmza: kendinden imzalı sertifika (10-17).** Gerçek sertifika yok (OV/EV ücretli, kimlik doğrulama ister). Kendinden imzalı imza yalnız bütünlüğü kanıtlar, SmartScreen'i susturmaz; README bunu açıkça söyler. Özel anahtar yalnız kullanıcının Windows sertifika deposunda, depoya/çıktıya girmez; açık sertifika `assets/draxbyte-codesign.cer`. Sonraki adım olası: SignPath Foundation (açık kaynak projelere ücretsiz imza).
+
+## Sistem araçları (10-18)
+- **Tarama kapsamı:** her dahili sürücü + sistem temp/log/cache klasörleri varsayılan açık (`scan.all_drives`, `scan.include_system`). Neden: kullanıcı "atlanan dizin olmasın" dedi; ölçülen açık ~3,6 GB'tı (Geri Dönüşüm Kutusu, CBS, Package Cache…). Tam C: taraması bu makinede 3,3 M dosya, ~1 dk 50 sn. Reddedilen: yalnız `~` + temp.
+- **`max_depth` 10 → 64 + `config_version` göçü.** Eski config'te saklı "10" bir seçim değil eski varsayılandı; yoksa yeni varsayılan hiç devreye girmezdi. 10'dan başka değerlere dokunulmaz.
+- **Kırmızı kural değişmedi:** `C:\Windows`, `System32`, sürücü kökü, `~/.ssh`… hâlâ silinmez. Program kaldırma bunu delmez; kaldırmanın kendi, ayrı ve çift (arama + silme anı) korumaları var (`leftover_path_allowed`, `reg_key_allowed`).
+- **Kaldırma sırası:** üreticinin kaldırıcısı → artık taraması → kullanıcı seçimi → silme. Reddedilen: kaldırıcıyı atlayıp doğrudan silmeyi varsayılan yapmak (yalnız kaldırıcı yoksa/engelliyse "zorla").
+- **Kayıt defteri her zaman yedekli:** `.reg` dışa aktarımı başarısızsa anahtar silinmez. Reddedilen: yedeksiz silme; sistem genelinde "temizleyici" tarzı kayıt defteri taraması (yalnız bir programa bağlı anahtarlar).
+- **Kalıcı silme varsayılan açık** (kaldırma artıkları): amaç diski hemen boşaltmak; her öğe zaten tek tek onaylı ve kayıt defteri yedekli. Çöp Kutusu kutuyla seçilebilir.
+- **"Olası" eşleşme (paylaşılan yayıncı klasörü, tarayıcı profili, sandbox Containers) seçili gelmez ve işaretlenirse ayrıca onay ister.** Test sırasında bir kullanıcı bu kutuları elle işaretledi ve silindi; ikinci onay tam bu kazaya karşı.
+- **Edge kaldırılabilir** (`--force-uninstall` + Windows Update engeli); kullanıcı kararı. **WebView2 sihirbazın dışında**, çünkü Office/Teams/Steam gibi programlar ona bağlı. Reddedilen: sessiz/otomatik Edge kaldırma.
+- **RAM "optimizasyonu" yalnız `EmptyWorkingSet`, arayüzde geçici olduğu yazılı.** Reddedilen: kalıcı iyileştirme vaadi. Gerçek kazanç: bellek yiyeni kapatmak + başlangıcı azaltmak.
+- **Süreç kapatma PID bazlı, isimle toplu değil;** sistem listesi + kullanıcı "koru" listesi (`memory.protected`). Neden: bu makinede başka projelerin 7/24 servisleri çalışıyor.
+- **Son kullanım tahmini:** UserAssist + Prefetch + BAM, arka plan exe'leri sayılmaz, kayıt yoksa "bilinmiyor". Reddedilen: kurulum tarihini kullanım saymak.
+- **macOS mühürlü sistem uygulamaları (Safari, Mail…) silinmez;** yalnız önbellek. Reddedilen: SIP/mühür kapatma talimatı otomasyonu (Kurtarma modu gerektirir, güncellemeleri bozar, Mac'te denenemez).
+- **Bırakılan:** çift dosya bulucu, disk haritası, geliştirici önbellek kuralları (npm/pip/cargo registry), Mac GUI'sinin gerçek Mac'te elle denenmesi, Windows'ta yönetici gerektiren servis/HKLM silmenin gerçek (yükseltilmiş) makinede denenmesi.

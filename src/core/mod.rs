@@ -1,7 +1,9 @@
 pub mod cleaner;
 pub mod docker;
+pub mod memory;
 pub mod recycle;
 pub mod rules;
 pub mod safety;
 pub mod scanner;
+pub mod startup;
 pub mod syslocs;

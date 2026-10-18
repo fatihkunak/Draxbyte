@@ -58,10 +58,14 @@ echo keep > "$H/Library/Application Support/Some Other App/keep"
 APPS="$("$BIN" apps --limit 400)"
 echo "$APPS" | grep -q "Zorb Notes" || { echo "MISSING from apps list: Zorb Notes"; fail=1; }
 # Safari lives on the sealed system volume: it must be listed as protected, not removable
+echo "--- Safari as listed:"; echo "$APPS" | grep -i "safari" || echo "(Safari not in the list)"
 if echo "$APPS" | grep -q "Safari"; then
   echo "$APPS" | grep "Safari" | grep -qiE "korumal|protected" || { echo "Safari should be shown as system-protected"; fail=1; }
+  # the binary exits non-zero when it refuses, so capture first (pipefail would misreport)
+  SAFARI_OUT="$("$BIN" uninstall "Safari" 2>&1 || true)"
+  echo "$SAFARI_OUT" | head -3
+  echo "$SAFARI_OUT" | grep -qiE "CANNOT|KALDIRILAMAZ|sealed|mühürlü" || { echo "Safari removal must be refused"; fail=1; }
 fi
-"$BIN" uninstall "Safari" 2>&1 | grep -qiE "CANNOT|KALDIRILAMAZ|sealed|mühürlü" || { echo "Safari removal must be refused"; fail=1; }
 
 "$BIN" uninstall "Zorb Notes" --apply || true
 [ ! -e "$H/Applications/Zorb Notes.app" ] || { echo "LEAK: app bundle still there"; fail=1; }

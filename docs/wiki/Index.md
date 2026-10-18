@@ -14,6 +14,9 @@
 ## 🧰 Sistem araçları
 - [[SysLocs]] — tüm sürücüler + sistem klasörleri taranır; Geri Dönüşüm Kutusu
 - [[Programs]] — kurulu programlar, son kullanım tahmini, kaldırıcı + artık temizliği, zorla kaldırma (Edge dahil), macOS .app
+- [[DiskMap]] — boyut ağacı + treemap; alan neyin altında (salt okunur)
+- [[Duplicates]] — birebir aynı dosyalar (boyut → kısmi hash → SHA-256), her gruptan en az bir kopya kalır
+- [[Wizard]] — kurulum/kaldırma sihirbazı (Setup.exe = aynı program; Windows + macOS)
 - [[Memory]] — bellek, program kapatma (korumalı liste), "belleği boşalt", başlangıç yöneticisi
 
 ## 💾 Veri & Ayar

@@ -35,7 +35,9 @@ pub struct DiskMapState {
 
 impl Default for DiskMapState {
     fn default() -> Self {
-        Self { root_text: "~".into(), tree: None, path: Vec::new(), job: None, msg: None }
+        // DRAXBYTE_MAP_ROOT=<path>: start with that folder in the box (screenshots, demos)
+        let root_text = std::env::var("DRAXBYTE_MAP_ROOT").unwrap_or_else(|_| "~".into());
+        Self { root_text, tree: None, path: Vec::new(), job: None, msg: None }
     }
 }
 
@@ -115,7 +117,7 @@ pub struct DupesState {
 impl Default for DupesState {
     fn default() -> Self {
         Self {
-            roots_text: "~".into(),
+            roots_text: std::env::var("DRAXBYTE_DUPES_ROOT").unwrap_or_else(|_| "~".into()),
             min_mb: 1,
             skip_dev: true,
             job: None,

@@ -47,6 +47,9 @@ Deleted items go to the Recycle Bin by default and can be restored.
 - 🧠 **Memory & Startup** — see what uses memory, close what you pick (with a protected list), switch startup programs off/on; "Free memory" with an honest warning that its effect is temporary
 - 💽 **Complete scan** — every internal drive and the system folders (`Windows\Temp`, `Package Cache`, `Windows.old`…) plus the Recycle Bin
 - 🍎 **macOS** — `.app` bundles with their `~/Library` files; apps on the sealed system volume (Safari, Mail…) cannot be deleted by anything, so only their caches are cleaned
+- 🗺️ **Disk Map** — what is taking the space? Coloured tiles sized by use (a treemap); click a folder to look inside; read-only
+- 👯 **Duplicate Files** — files with exactly the same content (size → first/last 64 KB → full SHA-256); at least one copy of every group always stays; deletion goes to the Recycle Bin
+- 🧙 **Install and uninstall wizard** — `Draxbyte-Setup.exe` installs step by step with the same theme and logo (Windows) / opened from the disk image it installs into Applications (macOS); uninstall is a wizard too and removes only its own files
 - 🌍 **English and Türkçe** UI, automatic or your choice
 - 📦 **One ~16 MB exe**, offline, no telemetry, MIT licensed
 
@@ -160,6 +163,9 @@ draxbyte uninstall "Name"                              # show what it would touc
 draxbyte uninstall "Name" --apply [--force] [--silent] # uninstaller + leftovers; --force skips the uninstaller
 draxbyte memory [--trim]                               # memory use (Windows: --trim frees idle memory, temporarily)
 draxbyte startup [--disable NAME | --enable NAME]      # what starts with Windows
+draxbyte dupes [PATHS...] [--min-size-mb N]            # duplicate files (dry run)
+draxbyte dupes [PATHS...] --apply [--keep oldest|newest|shortest] [--permanent]   # remove the extra copies
+draxbyte map [PATH] [--depth N] [--limit N]            # text disk map: the biggest folders/files
 ```
 
 Without arguments the GUI opens. `DRAXBYTE_HOME=<folder>` moves the config/data folder (portable use).

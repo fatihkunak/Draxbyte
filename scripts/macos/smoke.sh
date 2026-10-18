@@ -76,4 +76,25 @@ fi
 [ -e "$H/Library/Application Support/Some Other App/keep" ] || { echo "DAMAGE: another app's data was removed"; fail=1; }
 
 "$BIN" memory --limit 5 >/dev/null || { echo "memory command failed"; fail=1; }
+
+# ---- duplicate finder and disk map ---------------------------------------------------------
+D="$H/Documents/dupes"
+mkdir -p "$D/a" "$D/b"
+head -c 5000000 /dev/urandom > "$D/a/photo.bin"
+cp "$D/a/photo.bin" "$D/b/photo-copy.bin"
+head -c 5000000 /dev/urandom > "$D/a/unique.bin"
+DUP="$("$BIN" dupes "$D" --min-size-mb 1)"
+echo "$DUP"
+echo "$DUP" | grep -q "photo-copy.bin" || { echo "dupes: the copy was not found"; fail=1; }
+if echo "$DUP" | grep -q "unique.bin"; then echo "dupes: a unique file was wrongly listed"; fail=1; fi
+# really remove the extra copy (permanently: the Trash is not reliable on a CI runner)
+printf 'DELETE\n' | "$BIN" dupes "$D" --min-size-mb 1 --apply --permanent || true
+n=0
+[ -e "$D/a/photo.bin" ] && n=$((n+1))
+[ -e "$D/b/photo-copy.bin" ] && n=$((n+1))
+[ "$n" -eq 1 ] || { echo "dupes: expected exactly one copy to remain, found $n"; fail=1; }
+[ -e "$D/a/unique.bin" ] || { echo "dupes: the unique file was removed"; fail=1; }
+MAP="$("$BIN" map "$H/Documents" --depth 2 --limit 5)"
+echo "$MAP"
+echo "$MAP" | grep -q "dupes" || { echo "map: the folder is missing from the map"; fail=1; }
 exit $fail

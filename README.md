@@ -49,6 +49,9 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 - 🗑️ **Programlar** — kurulu programları boyut ve son kullanımla gör; istediğini **üreticinin kaldırıcısı + artıkları** (AppData, kayıt defteri, servis, görev) ile tamamen kaldır; kaldırıcı yoksa ya da üretici engelliyorsa (Edge) **zorla kaldır**. Kayıt defteri önce yedeklenir, geri yüklenebilir
 - 🧠 **Bellek ve Başlangıç** — belleği kimin yediğini gör, seçtiğini kapat (korumalı liste), başlangıçta açılanları kapat/aç; "Belleği boşalt" dürüst bir uyarıyla (etkisi geçicidir)
 - 💽 **Eksiksiz tarama** — her dahili sürücü ve sistem klasörleri (`Windows\Temp`, `Package Cache`, `Windows.old`…) + Geri Dönüşüm Kutusu
+- 🗺️ **Disk Haritası** — alan neyin altında? Boyutla orantılı renkli kutular (treemap), tıklayınca klasörün içine girersin; salt okunur
+- 👯 **Kopya Dosyalar** — birebir aynı içerikli dosyalar (boyut → ilk/son 64 KB → tam SHA-256); her gruptan en az bir kopya her zaman kalır, silme Çöp Kutusu'na
+- 🧙 **Kurulum ve kaldırma sihirbazı** — `Draxbyte-Setup.exe` aynı tema ve logoyla adım adım kurar (Windows) / DMG'den açılınca Applications'a kurar (macOS); kaldırma da sihirbazdır ve yalnızca kendi dosyalarını siler
 - 🌍 **Türkçe ve English** arayüz, otomatik ya da seçimine göre
 - 📦 **Tek ~16 MB exe**, çevrimdışı, telemetri yok, MIT lisanslı
 
@@ -168,6 +171,9 @@ draxbyte uninstall "Ad"                                # neye dokunacağını g�
 draxbyte uninstall "Ad" --apply [--force] [--silent]   # kaldırıcı + artıklar; --force: kaldırıcıyı atla
 draxbyte memory [--trim]                               # bellek kullanımı (Windows: --trim geçici boşaltır)
 draxbyte startup [--disable AD | --enable AD]          # Windows'la açılanlar
+draxbyte dupes [YOLLAR...] [--min-size-mb N]           # kopya dosyalar (kuru çalıştırma)
+draxbyte dupes [YOLLAR...] --apply [--keep oldest|newest|shortest] [--permanent]   # fazla kopyaları kaldır
+draxbyte map [YOL] [--depth N] [--limit N]             # metin disk haritası: en büyük klasörler/dosyalar
 ```
 
 Argümansız çalıştırırsan arayüz açılır. `DRAXBYTE_HOME=<klasör>` ile ayar/veri klasörünü değiştirebilirsin

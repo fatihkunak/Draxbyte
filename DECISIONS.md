@@ -33,3 +33,14 @@
 - **Son kullanım tahmini:** UserAssist + Prefetch + BAM, arka plan exe'leri sayılmaz, kayıt yoksa "bilinmiyor". Reddedilen: kurulum tarihini kullanım saymak.
 - **macOS mühürlü sistem uygulamaları (Safari, Mail…) silinmez;** yalnız önbellek. Reddedilen: SIP/mühür kapatma talimatı otomasyonu (Kurtarma modu gerektirir, güncellemeleri bozar, Mac'te denenemez).
 - **Bırakılan:** çift dosya bulucu, disk haritası, geliştirici önbellek kuralları (npm/pip/cargo registry), Mac GUI'sinin gerçek Mac'te elle denenmesi, Windows'ta yönetici gerektiren servis/HKLM silmenin gerçek (yükseltilmiş) makinede denenmesi.
+
+## Sihirbaz, kopya bulucu, disk haritası (10-18)
+- **Kullanıcı kuralı: her değişiklik Mac + Windows.** `CLAUDE.md`'ye yazıldı; platforma özel kod `cfg` ile ayrılır, karşılığı ya da dürüst "desteklenmiyor" olur, saf mantık her yerde test edilir, Mac CI'da doğrulanır.
+- **Setup.exe = aynı program.** IExpress + PowerShell yükleyici reddedildi: ikinci bir araç zinciri, MessageBox'lı arayüz ve markadan kopuk. Aynı ikili ad/bayrakla sihirbaz açar (tema, logo, iki dil bedava), güncelleyicinin SHA256 + imza doğrulaması aynen çalışır. Bedeli: Setup ~6 MB yerine ~18 MB.
+- **Kaldırma yalnızca kendi dosyalarını siler,** seçilen klasörü komple değil: kullanıcı yanlışlıkla `Belgelerim`e kurarsa kaldırma onu silmesin. Kurulum klasörü ayrıca doğrulanır (kişisel/korumalı olmaz).
+- **Çalışan sürümün üzerine kurulum = yeniden adlandır + kopyala.** Windows çalışan exe'nin üzerine yazmaz ama adını değiştirmeye izin verir; yeni sürüm bir sonraki açılışta devreye girer, uygulamayı zorla kapatmak gerekmez.
+- **Mac'te kurulum = `.app`'i Applications'a kopyala** (DMG'den açılınca otomatik). Karantina bayrağı **kaldırılmaz**: Gatekeeper'ı sessizce atlatmak kullanıcının onayı olmadan güvenlik denetimini delmek olur.
+- **Test hazards:** bir testim gerçek `~/.draxbyte`'ı silmeye kalktı (dosya kilitli olduğu için kurtuldu). Çözüm: silinecek veri klasörü ve ev klasörü `Target` ile enjekte edilir; sihirbaz için ayrı kum havuzu modu. Kural: **veri silen hiçbir kod yolu testte gerçek konumu görmemeli.**
+- **Kopya bulucu:** boyut → ilk/son 64 KB → tam SHA-256. Geliştirme/derleme ara klasörleri varsayılan atlanır (gerçek tarama, en büyük "kopyaların" Android CMake çıktısı olduğunu gösterdi). Her gruptan en az bir kopya kalır (arayüz + çekirdek). Silme yalnızca görünen ilk 300 gruba uygulanır. Hardlink'ler ayrıştırılmaz (bilinen sınır).
+- **Disk haritası salt okunur,** bellek sınırlı ağaç (en büyük 64 çocuk, ≥ 8 MB; kalanı "küçük öğe"). Reddedilen: tüm dosyaları bellekte tutmak (tam sürücüde yüzlerce MB).
+- **Bırakılan:** kopya bulucuda içerik-bazlı "benzer resim/müzik" yakalama, disk haritasında silme, kopyaları sabit bağlantıya çevirme, kopya ekranının gerçek pencerede görsel doğrulanması (pencere küçültülmüştü).

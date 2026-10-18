@@ -42,6 +42,11 @@ pub enum Cmd {
     /// Clean what a scan finds. DRY-RUN unless --apply is given.
     /// Read-only Docker disk usage check (`docker system df`).
     Docker,
+    /// Show the Recycle Bin / Trash size; `--empty` empties it for good.
+    Recycle {
+        #[arg(long)]
+        empty: bool,
+    },
     Clean {
         paths: Vec<PathBuf>,
         /// Also include yellow ("be careful") items. Green only by default.
@@ -127,6 +132,21 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                     "{}",
                     tf!("... ve {} öğe daha", "... and {} more", items.len() - limit)
                 );
+            }
+            Ok(())
+        }
+        Some(Cmd::Recycle { empty }) => {
+            use draxbyte::core::recycle;
+            let before = recycle::status().map_err(|e| anyhow::anyhow!(e))?;
+            println!(
+                "{}",
+                tf!("{} öğe, {}", "{} items, {}", before.items, human_bytes(before.bytes))
+            );
+            if empty {
+                recycle::empty().map_err(|e| anyhow::anyhow!(e))?;
+                println!("{}", t("Boşaltıldı.", "Emptied."));
+            } else if before.items > 0 {
+                println!("{}", t("Boşaltmak için: draxbyte recycle --empty", "To empty it: draxbyte recycle --empty"));
             }
             Ok(())
         }

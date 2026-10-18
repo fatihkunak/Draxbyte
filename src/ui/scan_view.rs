@@ -49,8 +49,71 @@ pub fn home(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(14.0);
             last_scan(app, ui);
             ui.add_space(14.0);
+            bin_card(app, ui);
+            ui.add_space(14.0);
             docker_card(app, ui);
         });
+}
+
+fn bin_card(app: &mut App, ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    if app.bin.status.is_none() && app.bin.job.is_none() && app.bin.error.is_none() {
+        app.start_bin(&ctx, false);
+    }
+    card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        let name = if cfg!(windows) { t("Geri Dönüşüm Kutusu", "Recycle Bin") } else { t("Çöp Kutusu", "Trash") };
+        ui.label(RichText::new(name).font(super::bold(17.0)));
+        if let Some(e) = &app.bin.error {
+            ui.label(RichText::new(tf!("Okunamadı: {e}", "Could not read: {e}")).color(WARN));
+        }
+        let busy = app.bin.job.is_some();
+        match app.bin.status {
+            None => {
+                ui.label(RichText::new(t("Okunuyor…", "Reading…")).color(MUTED));
+            }
+            Some(st) => {
+                ui.label(
+                    RichText::new(tf!(
+                        "{} öğe · {}",
+                        "{} items · {}",
+                        st.items,
+                        human_bytes(st.bytes)
+                    ))
+                    .color(if st.bytes > 0 { ACCENT } else { MUTED }),
+                );
+                if let Some(freed) = app.bin.freed.filter(|f| *f != u64::MAX) {
+                    ui.label(RichText::new(tf!("{} boşaltıldı.", "{} freed.", human_bytes(freed))).color(ACCENT));
+                }
+                ui.horizontal(|ui| {
+                    if busy {
+                        ui.label(RichText::new(t("Çalışıyor…", "Working…")).color(WARN));
+                    } else if app.bin.confirm {
+                        ui.label(RichText::new(t(
+                            "Kutudaki her şey kalıcı olarak silinir ve geri alınamaz. Emin misin?",
+                            "Everything in it is deleted for good and cannot be undone. Sure?",
+                        )).color(WARN));
+                        if ui.button(t("Evet, boşalt", "Yes, empty")).clicked() {
+                            app.bin.confirm = false;
+                            app.bin.freed = Some(u64::MAX); // marker: next result reports the difference
+                            app.start_bin(&ctx, true);
+                        }
+                        if ui.button(t("Vazgeç", "Cancel")).clicked() {
+                            app.bin.confirm = false;
+                        }
+                    } else {
+                        if ui.add_enabled(st.items > 0, egui::Button::new(t("Boşalt", "Empty"))).clicked() {
+                            app.bin.confirm = true;
+                        }
+                        if ui.button(t("Yenile", "Refresh")).clicked() {
+                            app.bin.freed = None;
+                            app.start_bin(&ctx, false);
+                        }
+                    }
+                });
+            }
+        }
+    });
 }
 
 fn hero(app: &mut App, ui: &mut egui::Ui) {

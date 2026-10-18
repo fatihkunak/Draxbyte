@@ -159,7 +159,7 @@ mod imp {
         #[test]
         fn disable_then_enable_roundtrips_in_a_scratch_key() {
             let root = RegKey::predef(HKEY_CURRENT_USER);
-            let base = format!(r"Software\DraxbyteTest-{}", std::process::id());
+            let base = format!(r"Software\DraxbyteTest-startup-{}", std::process::id());
             let sub = format!(r"{base}\StartupApproved\Run");
             write_approved(&root, &sub, "Foo", false).unwrap();
             let raw = root.open_subkey(&sub).unwrap().get_raw_value("Foo").unwrap();

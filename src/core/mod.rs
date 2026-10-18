@@ -1,5 +1,7 @@
+pub mod apps;
 pub mod cleaner;
 pub mod docker;
+pub mod elevate;
 pub mod memory;
 pub mod recycle;
 pub mod rules;

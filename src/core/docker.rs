@@ -23,8 +23,21 @@ pub enum DockerStatus {
     Ok(Vec<DockerRow>),
 }
 
-fn command() -> Command {
+/// `docker` command with the platform quirks applied.
+/// A GUI app started from Finder gets PATH=/usr/bin:/bin:/usr/sbin:/sbin, which has no Docker.
+fn docker_command() -> Command {
     let mut c = Command::new("docker");
+    #[cfg(target_os = "macos")]
+    {
+        let extra = "/usr/local/bin:/opt/homebrew/bin:/Applications/Docker.app/Contents/Resources/bin";
+        let path = std::env::var("PATH").unwrap_or_default();
+        c.env("PATH", format!("{extra}:{path}"));
+    }
+    c
+}
+
+fn command() -> Command {
+    let mut c = docker_command();
     c.args(["system", "df", "--format", "{{json .}}"])
         .stdin(Stdio::null());
     #[cfg(windows)]
@@ -79,7 +92,7 @@ pub fn check() -> DockerStatus {
 /// Removes ONLY the Docker build cache (`docker builder prune -f`). Containers, images and
 /// volumes are untouched. Returns Docker's summary line (e.g. "Total reclaimed space: 2GB").
 pub fn prune_build_cache() -> Result<String, String> {
-    let mut c = Command::new("docker");
+    let mut c = docker_command();
     c.args(["builder", "prune", "-f"]).stdin(Stdio::null());
     #[cfg(windows)]
     {

@@ -1,0 +1,25 @@
+name: macOS DMG
+on:
+  workflow_dispatch:
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit tests (on macOS)
+        run: cargo test --release
+      - name: Build
+        run: cargo build --release
+      - name: Smoke test on a fake macOS home
+        run: bash scripts/macos/smoke.sh target/release/draxbyte
+      - name: Build DMG
+        run: bash scripts/macos/build-dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Draxbyte-macos-dmg
+          path: |
+            dist/*.dmg
+            dist/*.sha256

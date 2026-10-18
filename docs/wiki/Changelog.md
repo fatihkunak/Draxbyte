@@ -9,3 +9,4 @@
 - 2026-10-17 — v0.2.0: güncelleme kontrolü ([[Update]], varsayılan kapalı), imzalı Setup.exe (`scripts/make-setup.ps1`), GitHub Release.
 - 2026-10-17 — Uygulama içi güncelleme: indir + SHA256 + sabitlenmiş imza parmak izi doğrulaması + Setup başlat ([[Update]]). Commit/release edilmedi.
 - 2026-10-17 — v0.2.1 yayınlandı (uygulama içi güncelleme).
+- 2026-10-18 — macOS (main'e birleşti, DMG v0.2.1 release'ine eklendi; Mac runner testleri + sahte home taraması yeşil, GUI gerçek Mac'te elle denenmedi): paket/bulut/kişisel veri korumaları ([[Safety]]), macOS GUI başlatmada Docker PATH düzeltmesi (`core/docker.rs`), `scripts/macos/build-dmg.sh` + `smoke.sh` + GitHub Actions `macos-dmg.yml` (universal, ad-hoc imzalı DMG). Mac donanımında doğrulanmadı.

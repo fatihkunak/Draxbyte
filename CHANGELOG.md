@@ -1,5 +1,16 @@
 ﻿# Changelog
 
+## 0.3.0 — 2026-10-18
+- New: **Programs** screen and `draxbyte apps` / `draxbyte uninstall`. Installed programs with size and an estimated last use (UserAssist, Prefetch, BAM on Windows; Spotlight on macOS — background helpers never count as "used", no record shows "unknown"). Remove any program completely: the vendor's uninstaller first, then its leftovers (folders, shortcuts, registry keys, autostart entries, services, scheduled tasks). **Force removal** for programs with no uninstaller or that the vendor blocks (Edge, with a block so Windows Update does not restore it). Registry keys are exported before deletion (skipped if the export fails) and can be restored. "Probable" leftovers (shared vendor folders, browser profiles) are never pre-selected and need a second confirmation. The Home page suggests programs unused for 90+ days
+- New: **Memory & Startup** screen, `draxbyte memory`, `draxbyte startup`. Memory per program, close what you pick (system programs and a personal protected list are refused; by PID, never by name), "Free memory" (temporary by nature, and the screen says so), switch startup programs off/on without deleting them
+- New: **complete scan.** Every internal drive and the system folders (`Windows\Temp`, `Logs\CBS`, `SoftwareDistribution\Download`, `Prefetch`, `Package Cache`, `$PatchCache$`, `Windows.old`, WER…) are scanned by default (Settings can turn each off). Max depth default 10 → 64 (old configs move once). New Recycle Bin card and `draxbyte recycle [--empty]`
+- New (macOS): `.app` bundles with their `~/Library` / `/Library` files by bundle identifier. Apps on the sealed system volume (Safari, Mail…) cannot be deleted by anything; only their caches are cleaned. Verified on a real macOS runner (tests and a removal smoke test), not by hand on a Mac
+- Safety: removal has its own guards, checked when searching and again right before deleting (protected folders, shared runtimes, OS registry branches); the red rule for system paths is unchanged
+- Not verified on a real machine: removing Windows services / HKLM keys (needs administrator), System Restore points (the service is off on the test PC), the macOS GUI
+- Known limits: Windows — the WebView2 runtime is a separate program and is not removed together with Edge. macOS — no in-app update, no registry-style undo (files go to the Trash or are deleted as you choose)
+
+Türkçe özet: Programlar (boyut, son kullanım tahmini, üreticinin kaldırıcısı + artıklar, zorla kaldırma, Edge), Bellek ve Başlangıç, eksiksiz tarama (her sürücü + sistem klasörleri + Geri Dönüşüm Kutusu), macOS `.app` desteği. Kayıt defteri önce yedeklenir; "olası" artıklar ayrıca onay ister.
+
 ## 0.2.2 — 2026-10-18
 - New: **macOS build** (`Draxbyte-0.2.2-macos.dmg`, Intel + Apple Silicon, ad-hoc signed — not notarized: first launch right-click → Open). Unit tests and a scan against a fake Mac home run on GitHub's macOS runner (`scripts/macos/smoke.sh`)
 - Safety (macOS): contents of `.app`, `.photoslibrary`, `.musiclibrary`, `.tvlibrary` packages and `~/Library/{Mobile Documents, CloudStorage, Keychains, Mail, Messages, Containers, Group Containers}` are never offered — deleting those would also delete cloud copies or break apps. `~/Library/Caches` stays cleanable

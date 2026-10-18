@@ -464,7 +464,7 @@ mod tests {
             "android_build"
         );
         assert_eq!(
-            e.classify(&p("/lib/.gradle/caches"), 100 * MB, ago(1), true)
+            e.classify(&p("/proj/.gradle/caches"), 100 * MB, ago(1), true)
                 .unwrap()
                 .rule,
             "gradle_cache"

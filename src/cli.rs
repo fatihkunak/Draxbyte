@@ -367,44 +367,39 @@ fn startup_cmd(disable: Option<String>, enable: Option<String>) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(windows))]
-fn apps_cmd(_: Option<i64>, _: bool, _: bool, _: usize) -> Result<()> {
-    bail!("{}", t("Program yönetimi şu an yalnızca Windows'ta", "Program management is Windows-only for now"))
-}
-#[cfg(not(windows))]
-fn uninstall_cmd(_: &str, _: bool, _: bool, _: bool, _: bool, _: bool) -> Result<()> {
-    bail!("{}", t("Program yönetimi şu an yalnızca Windows'ta", "Program management is Windows-only for now"))
-}
-
-#[cfg(windows)]
 fn apps_cmd(unused_days: Option<i64>, store: bool, hidden: bool, limit: usize) -> Result<()> {
-    use draxbyte::core::apps::{human_days, win};
-    let now = draxbyte::models::now_secs();
-    let mut apps = win::inventory(store);
-    win::fill_missing_sizes(&mut apps, &AtomicBool::new(false));
-    apps.retain(|a| hidden || !a.system_component);
-    if let Some(n) = unused_days {
-        apps.retain(|a| a.days_unused(now).map(|d| d >= n).unwrap_or(true));
+    use draxbyte::core::apps::{self, human_days, Removability};
+    if !apps::supported() {
+        bail!("{}", t("Program yönetimi bu platformda yok", "Program management is not available on this platform"));
     }
-    apps.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    let now = draxbyte::models::now_secs();
+    let mut list = apps::inventory(store);
+    apps::fill_missing_sizes(&mut list, &AtomicBool::new(false));
+    list.retain(|a| hidden || !a.system_component);
+    if let Some(n) = unused_days {
+        list.retain(|a| a.days_unused(now).map(|d| d >= n).unwrap_or(true));
+    }
+    list.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
     println!("{:>10}  {:<16} {:<44} {}", t("BOYUT", "SIZE"), t("SON KULLANIM", "LAST USED"), t("PROGRAM", "PROGRAM"), t("DURUM", "STATUS"));
-    for a in apps.iter().take(limit) {
+    for a in list.iter().take(limit) {
         let used = a.days_unused(now).map(human_days).unwrap_or_else(|| "?".into());
         let status = match &a.removable {
-            draxbyte::core::apps::Removability::Normal => String::new(),
-            draxbyte::core::apps::Removability::Blocked(_) => t("üretici engelli → zorla", "vendor-blocked → force").to_string(),
-            draxbyte::core::apps::Removability::Sealed(_) => t("Windows korumalı", "Windows-protected").to_string(),
+            Removability::Normal => String::new(),
+            Removability::Blocked(_) => t("üretici engelli → zorla", "vendor-blocked → force").to_string(),
+            Removability::Sealed(_) => t("sistem korumalı", "system-protected").to_string(),
         };
         println!("{:>10}  {:<16} {:<44} {}", human_bytes(a.size_bytes), used, a.name.chars().take(44).collect::<String>(), status);
     }
-    println!("{}", tf!("{} program (gösterilen: ilk {})", "{} programs (showing first {})", apps.len(), limit.min(apps.len())));
+    println!("{}", tf!("{} program (gösterilen: ilk {})", "{} programs (showing first {})", list.len(), limit.min(list.len())));
     Ok(())
 }
 
-#[cfg(windows)]
 fn uninstall_cmd(query: &str, apply: bool, force: bool, silent: bool, trash: bool, probable: bool) -> Result<()> {
-    use draxbyte::core::apps::{win, Confidence, Removability};
-    let all = win::inventory(true);
+    use draxbyte::core::apps::{self, Confidence, RemoveOptions, Removability};
+    if !apps::supported() {
+        bail!("{}", t("Program yönetimi bu platformda yok", "Program management is not available on this platform"));
+    }
+    let all = apps::inventory(true);
     let q = query.to_lowercase();
     let exact: Vec<_> = all.iter().filter(|a| a.name.to_lowercase() == q || a.id.to_lowercase() == q).collect();
     let found: Vec<_> = if exact.len() == 1 { exact } else { all.iter().filter(|a| a.name.to_lowercase().contains(&q)).collect() };
@@ -419,7 +414,6 @@ fn uninstall_cmd(query: &str, apply: bool, force: bool, silent: bool, trash: boo
         }
     };
     let others: Vec<_> = all.iter().filter(|a| a.id != app.id).cloned().collect();
-    let env = win::ScanEnv::system();
 
     println!("{} {} {}  ({})", app.name, app.version, app.publisher, app.install_location.as_ref().map(|p| p.display().to_string()).unwrap_or_default());
     println!("{}", match &app.removable {
@@ -427,14 +421,14 @@ fn uninstall_cmd(query: &str, apply: bool, force: bool, silent: bool, trash: boo
         Removability::Blocked(m) => format!("{}: {m}", t("kaldırıcı", "uninstaller")),
         Removability::Sealed(m) => format!("{}: {m}", t("KALDIRILAMAZ", "CANNOT BE REMOVED")),
     });
-    if let Removability::Sealed(_) = app.removable {
-        bail!("{}", t("Bu paket Windows'a ait; hiçbir uygulama kaldıramaz", "This package belongs to Windows; no program can remove it"));
+    if let Removability::Sealed(m) = &app.removable {
+        bail!("{m}");
     }
-    let running = app.install_location.as_deref().map(draxbyte::core::apps::processes_under).unwrap_or_default();
+    let running = app.install_location.as_deref().map(apps::processes_under).unwrap_or_default();
     for g in &running {
         println!("{}", tf!("çalışıyor: {} ({} işlem)", "running: {} ({} processes)", g.name, g.pids.len()));
     }
-    let leftovers = win::find_leftovers(&app, &others, &env);
+    let leftovers = apps::find_leftovers(&app, &others);
     for l in &leftovers {
         println!(
             "  [{}] {:>10}  {}  — {}",
@@ -450,33 +444,30 @@ fn uninstall_cmd(query: &str, apply: bool, force: bool, silent: bool, trash: boo
     }
 
     if !running.is_empty() {
-        let r = win::close_running(&app);
+        let r = apps::close_running(&app);
         println!("{}", tf!("{} işlem kapatıldı", "{} processes closed", r.asked));
     }
-    match win::create_restore_point(&app.name) {
+    match apps::create_restore_point(&app.name) {
         Ok(()) => println!("{}", t("Geri yükleme noktası oluşturuldu", "Restore point created")),
         Err(e) => println!("{}", tf!("Geri yükleme noktası oluşturulamadı ({e}); devam ediliyor", "Restore point not created ({e}); continuing")),
     }
     if !force {
         let by_force_flag = matches!(app.removable, Removability::Blocked(_));
-        match win::run_uninstaller(&app, silent, by_force_flag) {
+        match apps::run_uninstaller(&app, silent, by_force_flag) {
             Ok(code) => println!("{}", tf!("Kaldırıcı bitti (çıkış kodu {})", "Uninstaller finished (exit code {})", code)),
             Err(e) => println!("{}", tf!("Kaldırıcı çalışmadı: {e}", "Uninstaller did not run: {e}")),
         }
         // Many uninstallers hand over to a copy of themselves and return at once.
         for _ in 0..60 {
-            if !win::still_registered(&app) {
+            if !apps::still_registered(&app) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
     }
-    let after = win::find_leftovers(&app, &others, &env);
+    let after = apps::find_leftovers(&app, &others);
     let chosen: Vec<_> = after.into_iter().filter(|l| probable || l.confidence == Confidence::High).collect();
-    let dir = draxbyte::config::data_dir()
-        .join("uninstall-backups")
-        .join(format!("{}-{}", draxbyte::models::now_secs(), app.name.chars().filter(|c| c.is_alphanumeric()).collect::<String>()));
-    let rep = win::remove_leftovers(&app, &chosen, &win::RemoveOptions { permanent: !trash, backup_dir: dir }, &env);
+    let rep = apps::remove_leftovers(&app, &chosen, &RemoveOptions { permanent: !trash, backup_dir: apps::backup_dir_for(&app) });
     for i in &rep.items {
         println!("  {}  {}{}", if i.ok { "OK  " } else { "FAIL" }, i.label, if i.message.is_empty() { String::new() } else { format!("  ({})", i.message) });
     }
@@ -484,11 +475,10 @@ fn uninstall_cmd(query: &str, apply: bool, force: bool, silent: bool, trash: boo
         "{}",
         tf!("Geri kazanılan: {} · yedek: {}", "Freed: {} · backup: {}", human_bytes(rep.freed), rep.backup_dir.display())
     );
-    if app.name == "Microsoft Edge" {
-        match win::block_edge_reinstall() {
-            Ok(()) => println!("{}", t("Edge'in Windows Update ile geri gelmesi engellendi", "Edge is blocked from coming back through Windows Update")),
-            Err(e) => println!("{}", tf!("Edge geri gelme engeli konamadı ({e}) — yönetici olarak çalıştır", "Could not block Edge from coming back ({e}) — run as administrator")),
-        }
+    match apps::after_removal(&app) {
+        Some(Ok(m)) => println!("{m}"),
+        Some(Err(e)) => println!("{}", tf!("Ek adım yapılamadı ({e}) — yönetici olarak çalıştır", "Extra step failed ({e}) — run as administrator")),
+        None => {}
     }
     Ok(())
 }

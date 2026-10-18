@@ -208,6 +208,36 @@ pub fn match_name(
     None
 }
 
+// ---- removal report -------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct RemoveOptions {
+    /// Skip the Recycle Bin (frees the disk at once).
+    pub permanent: bool,
+    /// Registry exports and the action log go here.
+    pub backup_dir: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct ItemResult {
+    pub label: String,
+    pub ok: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RemoveReport {
+    pub items: Vec<ItemResult>,
+    pub freed: u64,
+    pub backup_dir: PathBuf,
+}
+
+impl RemoveReport {
+    pub fn failed(&self) -> usize {
+        self.items.iter().filter(|i| !i.ok).count()
+    }
+}
+
 // ---- guards ---------------------------------------------------------------------------------
 
 /// Folder roots on this machine that program remnants may live in.
@@ -506,6 +536,161 @@ pub fn human_days(days: i64) -> String {
         _ => (format!("{} yıl önce", days / 365), format!("{} years ago", days / 365)),
     };
     crate::tr!(tr, en)
+}
+
+// ---- platform facade -------------------------------------------------------------------------
+// The UI and the CLI call only these; Windows and macOS provide the implementations.
+
+/// Does this platform have program management at all?
+pub fn supported() -> bool {
+    cfg!(any(windows, target_os = "macos"))
+}
+
+pub fn inventory(include_store: bool) -> Vec<InstalledApp> {
+    #[cfg(windows)]
+    {
+        win::inventory(include_store)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = include_store;
+        mac::inventory()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = include_store;
+        Vec::new()
+    }
+}
+
+/// Computes sizes the installers did not report.
+pub fn fill_missing_sizes(apps: &mut [InstalledApp], cancel: &std::sync::atomic::AtomicBool) {
+    for a in apps.iter_mut().filter(|a| a.size_bytes == 0) {
+        if let Some(loc) = a.install_location.as_deref().filter(|p| p.is_dir()) {
+            a.size_bytes = crate::core::scanner::dir_stats(loc, cancel).size;
+        }
+    }
+}
+
+/// What still belongs to `app` (before: a preview; after the uninstaller: the remnants).
+pub fn find_leftovers(app: &InstalledApp, others: &[InstalledApp]) -> Vec<Leftover> {
+    #[cfg(windows)]
+    {
+        win::find_leftovers(app, others, &win::ScanEnv::system())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        mac::find_leftovers(app, others)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (app, others);
+        Vec::new()
+    }
+}
+
+/// Runs the vendor's uninstaller and waits. `force` = Chromium-style `--force-uninstall`.
+pub fn run_uninstaller(app: &InstalledApp, silent: bool, force: bool) -> Result<i32, String> {
+    #[cfg(windows)]
+    {
+        win::run_uninstaller(app, silent, force)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (silent, force);
+        mac::remove_bundle(app)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (app, silent, force);
+        Err("not supported on this platform".into())
+    }
+}
+
+/// Is the program still installed (registry entry / bundle)? Polled while an uninstaller works.
+pub fn still_registered(app: &InstalledApp) -> bool {
+    #[cfg(windows)]
+    {
+        win::still_registered(app)
+    }
+    #[cfg(not(windows))]
+    {
+        app.install_location.as_deref().map(|p| p.exists()).unwrap_or(false)
+    }
+}
+
+/// Force-closes whatever still runs from the program's folder.
+pub fn close_running(app: &InstalledApp) -> crate::core::memory::CloseReport {
+    let Some(loc) = app.install_location.as_deref() else { return Default::default() };
+    let pids: Vec<u32> = processes_under(loc).iter().flat_map(|g| g.pids.clone()).collect();
+    crate::core::memory::close_pids(&pids, true)
+}
+
+pub fn remove_leftovers(app: &InstalledApp, items: &[Leftover], opts: &RemoveOptions) -> RemoveReport {
+    #[cfg(windows)]
+    {
+        win::remove_leftovers(app, items, opts, &win::ScanEnv::system())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        mac::remove_leftovers(app, items, opts)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (app, items);
+        RemoveReport { backup_dir: opts.backup_dir.clone(), ..Default::default() }
+    }
+}
+
+/// A restore point / snapshot before the removal, where the OS offers one.
+pub fn create_restore_point(description: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        win::create_restore_point(description)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = description;
+        Err(crate::tr!("Bu platformda yok".to_string(), "Not available on this platform".to_string()))
+    }
+}
+
+/// Puts back the registry keys saved in a backup folder (Windows). Returns how many files.
+pub fn restore_backup(dir: &Path) -> Result<usize, String> {
+    #[cfg(windows)]
+    {
+        win::restore_registry_backup(dir)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = dir;
+        Err(crate::tr!("Kayıt defteri yedeği yalnızca Windows'ta var".to_string(), "Registry backups exist on Windows only".to_string()))
+    }
+}
+
+/// Extra step after removing a specific program (Edge: stop Windows Update putting it back).
+/// `None` = nothing to do.
+pub fn after_removal(app: &InstalledApp) -> Option<Result<String, String>> {
+    #[cfg(windows)]
+    {
+        (app.name == "Microsoft Edge").then(|| {
+            win::block_edge_reinstall()
+                .map(|_| crate::tr!("Edge'in Windows Update ile geri gelmesi engellendi".to_string(), "Edge is blocked from coming back through Windows Update".to_string()))
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        None
+    }
+}
+
+/// Folder for this removal's registry exports and log.
+pub fn backup_dir_for(app: &InstalledApp) -> PathBuf {
+    let clean: String = app.name.chars().filter(|c| c.is_alphanumeric()).collect();
+    crate::config::data_dir()
+        .join("uninstall-backups")
+        .join(format!("{}-{}", crate::models::now_secs(), clean))
 }
 
 #[cfg(test)]

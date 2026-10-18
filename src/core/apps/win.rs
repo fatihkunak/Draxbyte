@@ -874,34 +874,6 @@ fn prune_nested(items: Vec<Leftover>) -> Vec<Leftover> {
 
 // ---- removal ---------------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
-pub struct RemoveOptions {
-    /// Skip the Recycle Bin (frees the disk at once).
-    pub permanent: bool,
-    /// Registry exports and the action log go here.
-    pub backup_dir: PathBuf,
-}
-
-#[derive(Debug, Clone)]
-pub struct ItemResult {
-    pub label: String,
-    pub ok: bool,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct RemoveReport {
-    pub items: Vec<ItemResult>,
-    pub freed: u64,
-    pub backup_dir: PathBuf,
-}
-
-impl RemoveReport {
-    pub fn failed(&self) -> usize {
-        self.items.iter().filter(|i| !i.ok).count()
-    }
-}
-
 fn clear_readonly(path: &Path) {
     if let Ok(rd) = std::fs::read_dir(path) {
         for e in rd.flatten() {

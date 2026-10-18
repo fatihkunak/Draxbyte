@@ -190,11 +190,21 @@ pub fn about(app: &mut App, ui: &mut egui::Ui) {
             row(ui, t("Derleme", "Build"), if cfg!(debug_assertions) { "debug" } else { "release" });
             row(ui, "Platform", format!("{} / {}", std::env::consts::OS, std::env::consts::ARCH));
             ui.add_space(4.0);
-            if ui.button(t("Veri klasörünü aç", "Open data folder")).clicked() {
-                let dir = data_dir();
-                let _ = std::fs::create_dir_all(&dir);
-                open_folder(&dir);
-            }
+            ui.horizontal(|ui| {
+                if ui.button(t("Veri klasörünü aç", "Open data folder")).clicked() {
+                    let dir = data_dir();
+                    let _ = std::fs::create_dir_all(&dir);
+                    open_folder(&dir);
+                }
+                if ui.button(t("Draxbyte'ı kaldır…", "Uninstall Draxbyte…")).clicked() {
+                    // the wizard is this same program in uninstall mode
+                    if let Ok(exe) = std::env::current_exe() {
+                        if std::process::Command::new(exe).arg("--uninstall").spawn().is_ok() {
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    }
+                }
+            });
         });
 
         ui.add_space(10.0);

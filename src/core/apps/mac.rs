@@ -336,7 +336,7 @@ pub fn remove_bundle(app: &InstalledApp) -> Result<i32, String> {
     }
 }
 
-fn admin_rm(p: &Path) -> Result<(), String> {
+pub fn admin_rm(p: &Path) -> Result<(), String> {
     // The path goes through an environment variable so quotes in it cannot break the script.
     let script = "do shell script \"/bin/rm -R \" & quoted form of (system attribute \"DRAXBYTE_PATH\") with administrator privileges";
     let out = std::process::Command::new("osascript")

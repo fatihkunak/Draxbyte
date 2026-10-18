@@ -2,6 +2,8 @@
 
 pub mod about_view;
 pub mod apps_view;
+pub mod diskmap_view;
+pub mod dupes_view;
 pub mod result_view;
 pub mod scan_view;
 pub mod settings_view;
@@ -111,7 +113,7 @@ pub fn apply_theme(ctx: &egui::Context) {
     });
 }
 
-fn nav() -> [(View, &'static str); 9] {
+fn nav() -> [(View, &'static str); 11] {
     [
         (View::Home, t("Ana Sayfa", "Home")),
         (View::Scan, t("Tarama", "Scan")),
@@ -119,6 +121,8 @@ fn nav() -> [(View, &'static str); 9] {
         (View::Clean, t("Temizlik", "Cleanup")),
         (View::Programs, t("Programlar", "Programs")),
         (View::System, t("Bellek ve Başlangıç", "Memory & Startup")),
+        (View::DiskMap, t("Disk Haritası", "Disk Map")),
+        (View::Duplicates, t("Kopya Dosyalar", "Duplicates")),
         (View::Cache, t("AI Önbelleği", "AI cache")),
         (View::Settings, t("Ayarlar", "Settings")),
         (View::About, t("Hakkında", "About")),
@@ -149,6 +153,8 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
             View::Clean => result_view::clean(app, ui),
             View::Programs => apps_view::programs(app, ui),
             View::System => system_view::system(app, ui),
+            View::DiskMap => diskmap_view::disk_map(app, ui),
+            View::Duplicates => dupes_view::duplicates(app, ui),
             View::Cache => settings_view::cache(app, ui),
             View::Settings => settings_view::settings(app, ui),
             View::About => about_view::about(app, ui),

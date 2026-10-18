@@ -273,3 +273,20 @@ pub fn stat_fill(ui: &mut Ui, label: &str, value: &str, color: Color32) {
         ui.label(RichText::new(value).size(22.0).strong().color(color));
     });
 }
+
+/// Shows a file or folder in the system file manager (Explorer / Finder / the folder on Linux).
+pub fn reveal(path: &std::path::Path) {
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg("-R").arg(path).spawn();
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let dir = if path.is_dir() { path } else { path.parent().unwrap_or(path) };
+        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+    }
+}

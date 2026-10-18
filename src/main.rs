@@ -3,8 +3,10 @@
 
 mod app;
 mod cli;
+mod map_dupes;
 mod panels;
 mod ui;
+mod wizard;
 
 use anyhow::Result;
 use clap::Parser;
@@ -24,6 +26,17 @@ fn main() -> Result<()> {
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
         )
         .init();
+    // Setup / uninstall wizard: this same program, started as `Draxbyte-Setup.exe`, with `--setup`
+    // or `--uninstall`, or as Draxbyte.app opened from the disk image. Decided before the CLI parses
+    // its arguments (those flags are not CLI subcommands).
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(mode) = wizard::detect_mode(&raw, &exe) {
+            let lang = Config::load(&default_config_path()).map(|c| c.ui.language).unwrap_or_else(|_| "auto".into());
+            draxbyte::i18n::set(draxbyte::i18n::resolve(&lang));
+            return wizard::run(mode, &raw);
+        }
+    }
     let args = cli::Cli::parse();
     let cfg_path = args.config.clone().unwrap_or_else(default_config_path);
     let cfg = Config::load(&cfg_path)?;

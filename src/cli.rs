@@ -47,7 +47,41 @@ pub enum Cmd {
         #[arg(long)]
         empty: bool,
     },
-    /// List installed programs with size and last use (Windows).
+    /// Find identical files. Changes nothing unless --apply is given.
+    Dupes {
+        /// Folders to search (default: your home folder)
+        paths: Vec<PathBuf>,
+        /// Ignore files smaller than this
+        #[arg(long, default_value_t = 1)]
+        min_size_mb: u64,
+        /// Show at most this many groups
+        #[arg(long, default_value_t = 15)]
+        limit: usize,
+        /// Also look inside node_modules, .git, target, caches…
+        #[arg(long)]
+        include_dev: bool,
+        /// Remove the extra copies (one per group always stays)
+        #[arg(long)]
+        apply: bool,
+        /// Which copy stays
+        #[arg(long, value_enum, default_value_t = KeepArg::Oldest)]
+        keep: KeepArg,
+        /// Skip the Recycle Bin / Trash (asks you to type the confirmation word)
+        #[arg(long, requires = "apply")]
+        permanent: bool,
+    },
+    /// Print the biggest folders and files under a path (a text disk map).
+    Map {
+        /// Folder or drive (default: your home folder)
+        path: Option<PathBuf>,
+        /// How many levels to print
+        #[arg(long, default_value_t = 2)]
+        depth: usize,
+        /// Entries per level
+        #[arg(long, default_value_t = 12)]
+        limit: usize,
+    },
+    /// List installed programs with size and last use (Windows and macOS).
     Apps {
         /// Only programs not used for at least this many days (programs with no record are listed too)
         #[arg(long)]
@@ -183,6 +217,10 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
             }
             Ok(())
         }
+        Some(Cmd::Dupes { paths, min_size_mb, limit, include_dev, apply, keep, permanent }) => {
+            dupes_cmd(paths, min_size_mb, limit, include_dev, apply, keep, permanent)
+        }
+        Some(Cmd::Map { path, depth, limit }) => map_cmd(path, depth, limit),
         Some(Cmd::Apps { unused_days, store, hidden, limit }) => apps_cmd(unused_days, store, hidden, limit),
         Some(Cmd::Uninstall { query, apply, force, silent, trash, probable }) => {
             uninstall_cmd(&query, apply, force, silent, trash, probable)
@@ -480,5 +518,83 @@ fn uninstall_cmd(query: &str, apply: bool, force: bool, silent: bool, trash: boo
         Some(Err(e)) => println!("{}", tf!("Ek adım yapılamadı ({e}) — yönetici olarak çalıştır", "Extra step failed ({e}) — run as administrator")),
         None => {}
     }
+    Ok(())
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum KeepArg {
+    Oldest,
+    Newest,
+    Shortest,
+}
+
+fn dupes_cmd(paths: Vec<PathBuf>, min_size_mb: u64, limit: usize, include_dev: bool, apply: bool, keep: KeepArg, permanent: bool) -> Result<()> {
+    use draxbyte::core::dupes::{self, DupeOptions, DupeProgress, Keep};
+    let roots = if paths.is_empty() { vec![draxbyte::config::home_dir()] } else { paths };
+    eprintln!("{}", tf!("Aranıyor: {}", "Searching: {}", roots.iter().map(|r| r.display().to_string()).collect::<Vec<_>>().join(", ")));
+    let opts = DupeOptions { roots, min_size: min_size_mb * 1024 * 1024, skip_dev: !include_dev };
+    let groups = dupes::find(&opts, &AtomicBool::new(false), &DupeProgress::default());
+    let wasted: u64 = groups.iter().map(|g| g.wasted()).sum();
+    println!("{}", tf!("{} kopya grubu · boşa giden alan: {}", "{} groups of duplicates · wasted space: {}", groups.len(), human_bytes(wasted)));
+    let rule = match keep {
+        KeepArg::Oldest => Keep::Oldest,
+        KeepArg::Newest => Keep::Newest,
+        KeepArg::Shortest => Keep::ShortestPath,
+    };
+    for g in groups.iter().take(limit) {
+        let k = dupes::keep_index(g, rule);
+        println!("{}", tf!("{} kopya × {} (boşa: {})", "{} copies × {} (wasted: {})", g.files.len(), human_bytes(g.size), human_bytes(g.wasted())));
+        for (i, f) in g.files.iter().enumerate() {
+            println!("  {} {}", if i == k { t("KALIR  ", "KEEP   ") } else { t("silinecek", "delete  ") }, f.path.display());
+        }
+    }
+    if groups.len() > limit {
+        println!("{}", tf!("... ve {} grup daha", "... and {} more groups", groups.len() - limit));
+    }
+    if !apply {
+        println!("{}", t("KURU ÇALIŞTIRMA: hiçbir şey silinmedi. Fazla kopyaları kaldırmak için --apply ekle.", "DRY RUN: nothing was deleted. Add --apply to remove the extra copies."));
+        return Ok(());
+    }
+    let mut files = Vec::new();
+    for g in &groups {
+        let k = dupes::keep_index(g, rule);
+        files.extend(dupes::to_delete(g, k).into_iter().cloned());
+    }
+    let refs: Vec<&dupes::DupeFile> = files.iter().collect();
+    let items = dupes::to_scan_items(&refs);
+    if permanent {
+        print!("{}", tf!("KALICI silme ({} dosya). Onaylamak için {} yaz: ", "PERMANENT delete ({} files). Type {} to confirm: ", items.len(), draxbyte::i18n::confirm_word()));
+        std::io::stdout().flush()?;
+        let mut s = String::new();
+        std::io::stdin().read_line(&mut s)?;
+        if s.trim() != draxbyte::i18n::confirm_word() {
+            bail!("{}", t("iptal edildi", "cancelled"));
+        }
+    }
+    let report = cleaner::clean(&items, CleanOptions { dry_run: false, permanent }, &AtomicBool::new(false), |_, _| {});
+    let ok = report.entries.iter().filter(|e| matches!(e.outcome, Outcome::Trashed | Outcome::Deleted)).count();
+    println!("{}", tf!("{} dosya kaldırıldı · {} geri kazanıldı ({} atlandı/başarısız)", "{} files removed · {} freed ({} skipped/failed)", ok, human_bytes(report.freed_bytes), report.entries.len() - ok));
+    Ok(())
+}
+
+fn map_cmd(path: Option<PathBuf>, depth: usize, limit: usize) -> Result<()> {
+    use draxbyte::core::diskmap::{self, MapOptions, MapProgress, Node};
+    let root = path.unwrap_or_else(draxbyte::config::home_dir);
+    if !root.is_dir() {
+        bail!("{}", tf!("klasör bulunamadı: {}", "folder not found: {}", root.display()));
+    }
+    eprintln!("{}", tf!("Harita çıkarılıyor: {}", "Mapping: {}", root.display()));
+    let tree = diskmap::build(&root, &MapOptions::default(), &AtomicBool::new(false), &MapProgress::default());
+    fn print(n: &Node, level: usize, depth: usize, limit: usize, total: u64) {
+        for c in n.children.iter().take(limit) {
+            let pct = if total > 0 { c.size as f64 * 100.0 / total as f64 } else { 0.0 };
+            println!("{}{:>10} {:>5.1}%  {}{}", "  ".repeat(level), human_bytes(c.size), pct, c.name, if c.is_dir && !c.other { std::path::MAIN_SEPARATOR.to_string() } else { String::new() });
+            if level + 1 < depth && c.is_dir && !c.other {
+                print(c, level + 1, depth, limit, total);
+            }
+        }
+    }
+    println!("{} · {}", tree.path.display(), tf!("{} · {} dosya", "{} · {} files", human_bytes(tree.size), tree.files));
+    print(&tree, 0, depth.max(1), limit, tree.size);
     Ok(())
 }

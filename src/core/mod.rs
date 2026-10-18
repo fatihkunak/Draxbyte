@@ -1,7 +1,10 @@
 pub mod apps;
 pub mod cleaner;
+pub mod diskmap;
 pub mod docker;
+pub mod dupes;
 pub mod elevate;
+pub mod installer;
 pub mod memory;
 pub mod recycle;
 pub mod rules;

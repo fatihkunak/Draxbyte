@@ -49,8 +49,127 @@ pub fn home(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(14.0);
             last_scan(app, ui);
             ui.add_space(14.0);
+            unused_card(app, ui);
+            bin_card(app, ui);
+            ui.add_space(14.0);
             docker_card(app, ui);
         });
+}
+
+/// Suggests removing programs that were not opened for a long time (the list comes from the
+/// Programs screen; "unknown" last use is never counted as unused).
+fn unused_card(app: &mut App, ui: &mut egui::Ui) {
+    use draxbyte::core::apps::{self, Removability};
+    if !apps::supported() {
+        return;
+    }
+    let ctx = ui.ctx().clone();
+    if !app.apps.loaded && app.apps.job.is_none() {
+        app.apps_refresh(&ctx);
+    }
+    if !app.apps.loaded {
+        return;
+    }
+    let (now, days) = (now_secs(), app.apps.unused_days);
+    let (n, bytes) = app
+        .apps
+        .list
+        .iter()
+        .filter(|a| !a.system_component && !matches!(a.removable, Removability::Sealed(_)))
+        .filter(|a| a.days_unused(now).map(|d| d >= days).unwrap_or(false))
+        .fold((0usize, 0u64), |(n, b), a| (n + 1, b + a.size_bytes));
+    if n == 0 {
+        return;
+    }
+    card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.label(RichText::new(t("Kullanılmayan programlar", "Unused programs")).font(super::bold(17.0)));
+        ui.label(
+            RichText::new(tf!(
+                "{} program {} gündür açılmamış · toplam {} yer kaplıyor",
+                "{} programs have not been opened for {} days · together they take {}",
+                n,
+                days,
+                human_bytes(bytes)
+            ))
+            .color(ACCENT),
+        );
+        ui.label(
+            RichText::new(t(
+                "Son kullanım Windows/macOS'un kayıtlarından tahmin edilir; kaydı olmayan programlar sayılmaz. Hiçbir şey sen onaylamadan kaldırılmaz.",
+                "Last use is estimated from the system's records; programs with no record are not counted. Nothing is removed without your approval.",
+            ))
+            .color(MUTED)
+            .small(),
+        );
+        if ui.button(t("Gözden geçir ve kaldır…", "Review and remove…")).clicked() {
+            app.apps.only_unused = true;
+            app.apps.sort = crate::panels::AppSort::Size;
+            app.view = View::Programs;
+        }
+    });
+    ui.add_space(14.0);
+}
+
+fn bin_card(app: &mut App, ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    if app.bin.status.is_none() && app.bin.job.is_none() && app.bin.error.is_none() {
+        app.start_bin(&ctx, false);
+    }
+    card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        let name = if cfg!(windows) { t("Geri Dönüşüm Kutusu", "Recycle Bin") } else { t("Çöp Kutusu", "Trash") };
+        ui.label(RichText::new(name).font(super::bold(17.0)));
+        if let Some(e) = &app.bin.error {
+            ui.label(RichText::new(tf!("Okunamadı: {e}", "Could not read: {e}")).color(WARN));
+        }
+        let busy = app.bin.job.is_some();
+        match app.bin.status {
+            None => {
+                ui.label(RichText::new(t("Okunuyor…", "Reading…")).color(MUTED));
+            }
+            Some(st) => {
+                ui.label(
+                    RichText::new(tf!(
+                        "{} öğe · {}",
+                        "{} items · {}",
+                        st.items,
+                        human_bytes(st.bytes)
+                    ))
+                    .color(if st.bytes > 0 { ACCENT } else { MUTED }),
+                );
+                if let Some(freed) = app.bin.freed.filter(|f| *f != u64::MAX) {
+                    ui.label(RichText::new(tf!("{} boşaltıldı.", "{} freed.", human_bytes(freed))).color(ACCENT));
+                }
+                ui.horizontal(|ui| {
+                    if busy {
+                        ui.label(RichText::new(t("Çalışıyor…", "Working…")).color(WARN));
+                    } else if app.bin.confirm {
+                        ui.label(RichText::new(t(
+                            "Kutudaki her şey kalıcı olarak silinir ve geri alınamaz. Emin misin?",
+                            "Everything in it is deleted for good and cannot be undone. Sure?",
+                        )).color(WARN));
+                        if ui.button(t("Evet, boşalt", "Yes, empty")).clicked() {
+                            app.bin.confirm = false;
+                            app.bin.freed = Some(u64::MAX); // marker: next result reports the difference
+                            app.start_bin(&ctx, true);
+                        }
+                        if ui.button(t("Vazgeç", "Cancel")).clicked() {
+                            app.bin.confirm = false;
+                        }
+                    } else {
+                        if ui.add_enabled(st.items > 0, egui::Button::new(t("Boşalt", "Empty"))).clicked() {
+                            app.bin.confirm = true;
+                        }
+                        if ui.button(t("Yenile", "Refresh")).clicked() {
+                            app.bin.freed = None;
+                            app.start_bin(&ctx, false);
+                        }
+                    }
+                });
+            }
+        }
+    });
 }
 
 fn hero(app: &mut App, ui: &mut egui::Ui) {
@@ -83,6 +202,17 @@ fn hero(app: &mut App, ui: &mut egui::Ui) {
                         app.scan_paths_text = app.cfg.scan.default_paths.join("; ");
                     }
                 });
+                if app.scan_paths_text == app.cfg.scan.default_paths.join("; ") {
+                    let extra = match (app.cfg.scan.all_drives, app.cfg.scan.include_system) {
+                        (true, true) => t("Ayrıca her dahili sürücü ve sistem klasörleri (Windows Temp, Package Cache…) taranır.", "Every internal drive and the system folders (Windows Temp, Package Cache…) are scanned as well."),
+                        (true, false) => t("Ayrıca her dahili sürücü taranır.", "Every internal drive is scanned as well."),
+                        (false, true) => t("Ayrıca sistem klasörleri taranır.", "The system folders are scanned as well."),
+                        (false, false) => "",
+                    };
+                    if !extra.is_empty() {
+                        ui.label(RichText::new(extra).color(MUTED).small());
+                    }
+                }
             });
             strip.cell(|ui| {
                 ui.horizontal(|ui| {

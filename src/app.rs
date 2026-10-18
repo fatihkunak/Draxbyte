@@ -24,6 +24,8 @@ pub enum View {
     Scan,
     Results,
     Clean,
+    Programs,
+    System,
     Cache,
     Settings,
     About,
@@ -87,6 +89,17 @@ pub enum UpdateState {
     Failed(String),
 }
 
+/// Recycle Bin card on the home page.
+#[derive(Default)]
+pub struct BinCard {
+    pub status: Option<draxbyte::core::recycle::BinStatus>,
+    pub job: Option<Receiver<Result<draxbyte::core::recycle::BinStatus, String>>>,
+    pub confirm: bool,
+    pub error: Option<String>,
+    /// Bytes freed by the last "empty", for the confirmation line.
+    pub freed: Option<u64>,
+}
+
 pub struct App {
     pub cfg: Config,
     pub cfg_draft: Config,
@@ -125,6 +138,9 @@ pub struct App {
     pub test_status: Option<(bool, String)>,
     pub model_filter: String,
 
+    pub bin: BinCard,
+    pub apps: crate::panels::AppsState,
+    pub sys: crate::panels::SysState,
     pub docker: Option<DockerStatus>,
     pub docker_job: Option<Receiver<DockerStatus>>,
     pub update: Option<UpdateState>,
@@ -199,7 +215,13 @@ impl App {
             cfg_path,
             db,
             rt,
-            view: View::Home,
+            // DRAXBYTE_VIEW=programs|system|... opens that screen first (screenshots, demos).
+            view: match std::env::var("DRAXBYTE_VIEW").unwrap_or_default().as_str() {
+                "programs" => View::Programs,
+                "system" => View::System,
+                "settings" => View::Settings,
+                _ => View::Home,
+            },
             disk: detect_disk(),
             scan_paths_text,
             last,
@@ -226,6 +248,9 @@ impl App {
             test_job: None,
             test_status: None,
             model_filter: String::new(),
+            bin: BinCard::default(),
+            apps: Default::default(),
+            sys: Default::default(),
             docker: None,
             docker_job: None,
             update: None,
@@ -304,6 +329,22 @@ impl App {
         self.docker_job = Some(rx);
     }
 
+    /// Reads the Recycle Bin size; with `empty` it empties the bin first. Caller must have confirmed.
+    pub fn start_bin(&mut self, ctx: &egui::Context, empty: bool) {
+        if self.bin.job.is_some() {
+            return;
+        }
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            use draxbyte::core::recycle;
+            let res = if empty { recycle::empty().and_then(|_| recycle::status()) } else { recycle::status() };
+            let _ = tx.send(res);
+            ctx.request_repaint();
+        });
+        self.bin.job = Some(rx);
+    }
+
     /// Prunes only the build cache, then re-checks usage. Caller must have confirmed.
     pub fn start_docker_prune(&mut self, ctx: &egui::Context) {
         if self.docker_prune_job.is_some() {
@@ -356,7 +397,10 @@ impl App {
             self.toast(t("Taranacak yol yok", "No path to scan"));
             return;
         }
-        let opts = ScanOptions::from_config(&self.cfg, Some(paths));
+        // Untouched field = "scan everything configured" (system folders, all drives); an edited
+        // field is taken literally.
+        let untouched = self.scan_paths_text == self.cfg.scan.default_paths.join("; ");
+        let opts = ScanOptions::from_config(&self.cfg, (!untouched).then_some(paths));
         let progress = Arc::new(Progress::default());
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = channel();
@@ -572,6 +616,7 @@ impl App {
     // ---- polling ----------------------------------------------------------
 
     pub fn poll_jobs(&mut self) {
+        self.panels_poll();
         if let Some(job) = &self.scan {
             if let Ok(out) = job.rx.try_recv() {
                 self.scan = None;
@@ -593,6 +638,21 @@ impl App {
                 self.rows.retain(|r| !gone.contains(&r.item.path));
                 self.view_dirty = true;
                 self.report = Some(rep);
+            }
+        }
+        if let Some(rx) = &self.bin.job {
+            if let Ok(res) = rx.try_recv() {
+                self.bin.job = None;
+                match res {
+                    Ok(st) => {
+                        if let Some(before) = self.bin.status.filter(|_| self.bin.freed == Some(u64::MAX)) {
+                            self.bin.freed = Some(before.bytes.saturating_sub(st.bytes));
+                        }
+                        self.bin.status = Some(st);
+                        self.bin.error = None;
+                    }
+                    Err(e) => self.bin.error = Some(e),
+                }
             }
         }
         if let Some(rx) = &self.docker_job {

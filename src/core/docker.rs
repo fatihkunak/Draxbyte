@@ -26,6 +26,7 @@ pub enum DockerStatus {
 /// `docker` command with the platform quirks applied.
 /// A GUI app started from Finder gets PATH=/usr/bin:/bin:/usr/sbin:/sbin, which has no Docker.
 fn docker_command() -> Command {
+    #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
     let mut c = Command::new("docker");
     #[cfg(target_os = "macos")]
     {

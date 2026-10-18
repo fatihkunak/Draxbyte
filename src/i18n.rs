@@ -171,6 +171,14 @@ pub fn rule_reason(rule: &str, stored: &str) -> String {
             "Gradle cache; dependencies are downloaded again",
         ),
         "py_cache" => ("Python önbelleği", "Python cache"),
+        "windows_old" => (
+            "Önceki Windows kurulumu; silince eski sürüme dönülemez",
+            "Previous Windows installation; you cannot roll back once it is deleted",
+        ),
+        "installer_cache" => (
+            "Yükleyici önbelleği; silinirse bazı programların onarımı/kaldırması kaynak ister",
+            "Installer cache; deleting it makes repairing/removing some programs ask for the original source",
+        ),
         "cache_dir" => (
             "Önbellek/geçici klasör, uzun süredir değişmemiş",
             "Cache/temp folder, untouched for a long time",
@@ -242,6 +250,8 @@ mod tests {
             "gradle_cache",
             "py_cache",
             "cache_dir",
+            "windows_old",
+            "installer_cache",
         ] {
             assert_ne!(rule_reason(rule, "STORED"), "STORED", "{rule}");
         }

@@ -107,7 +107,8 @@ impl ScanItem {
         match self.rule.as_str() {
             "node_modules" | "rust_target" | "native_build" | "android_build" | "gradle_build"
             | "gradle_cache" => return Kind::Developer,
-            "py_cache" | "cache_dir" | "temp_location" | "safe_ext" => return Kind::Cache,
+            "py_cache" | "cache_dir" | "temp_location" | "safe_ext" | "installer_cache"
+            | "windows_old" => return Kind::Cache,
             "vm_disk" => return Kind::VmDisk,
             _ => {}
         }

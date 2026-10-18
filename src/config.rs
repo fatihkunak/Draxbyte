@@ -9,11 +9,22 @@ pub const API_KEY_ENV: &str = "DRAXBYTE_API_KEY";
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Config {
+    /// Bumped when a default changes in a way old config files must pick up (see `migrate`).
+    pub config_version: u32,
     pub scan: ScanConfig,
     pub rules: RulesConfig,
     pub ai: AiConfig,
     pub cleanup: CleanupConfig,
     pub ui: UiConfig,
+    pub memory: MemoryConfig,
+}
+
+/// Memory screen settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct MemoryConfig {
+    /// Program names (e.g. `my-service.exe`) that can never be closed from Draxbyte.
+    pub protected: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +34,11 @@ pub struct ScanConfig {
     pub max_depth: usize,
     pub min_size_mb: u64,
     pub exclude_patterns: Vec<String>,
+    /// Also scan system temp/log/cache folders (`C:\Windows\Temp`, `Package Cache`, …).
+    /// Only applies when the scan paths are the defaults.
+    pub include_system: bool,
+    /// Also scan every internal drive, not just the home folder.
+    pub all_drives: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,9 +101,11 @@ impl Default for ScanConfig {
         default_paths.dedup();
         Self {
             default_paths,
-            max_depth: 10,
+            max_depth: 64,
             min_size_mb: 1,
             exclude_patterns: vec!["*.git/*".into(), "node_modules/*".into()],
+            include_system: true,
+            all_drives: true,
         }
     }
 }
@@ -170,11 +188,25 @@ pub fn default_config_path() -> PathBuf {
     data_dir().join("config.toml")
 }
 
+/// Current `config_version`.
+pub const CONFIG_VERSION: u32 = 2;
+
 impl Config {
+    /// v2: the scan depth default went 10 → 64 (deep trees were silently cut off). A saved 10 is
+    /// the old default, not a choice, so it moves too.
+    fn migrate(&mut self) {
+        if self.config_version < 2 && self.scan.max_depth == 10 {
+            self.scan.max_depth = 64;
+        }
+        self.config_version = CONFIG_VERSION;
+    }
+
     /// Missing file → defaults (nothing is written until the user saves).
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
-            return Ok(Self::default());
+            let mut c = Self::default();
+            c.migrate();
+            return Ok(c);
         }
         let text = std::fs::read_to_string(path).with_context(|| {
             crate::tf!(
@@ -183,9 +215,11 @@ impl Config {
                 path.display()
             )
         })?;
-        toml::from_str(&text).with_context(|| {
+        let mut cfg: Self = toml::from_str(&text).with_context(|| {
             crate::tf!("config geçersiz: {}", "invalid config: {}", path.display())
-        })
+        })?;
+        cfg.migrate();
+        Ok(cfg)
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -200,6 +234,29 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_config_with_depth_10_is_migrated_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("c.toml");
+        std::fs::write(&f, "[scan]
+max_depth = 10
+").unwrap();
+        let c = Config::load(&f).unwrap();
+        assert_eq!(c.scan.max_depth, 64);
+        assert_eq!(c.config_version, CONFIG_VERSION);
+        // a deliberate value on a current config is left alone
+        std::fs::write(&f, "config_version = 2
+[scan]
+max_depth = 10
+").unwrap();
+        assert_eq!(Config::load(&f).unwrap().scan.max_depth, 10);
+        // a deliberate non-default depth on an old config is left alone too
+        std::fs::write(&f, "[scan]
+max_depth = 5
+").unwrap();
+        assert_eq!(Config::load(&f).unwrap().scan.max_depth, 5);
+    }
 
     #[test]
     fn missing_file_gives_defaults_with_ai_off() {

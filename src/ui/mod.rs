@@ -1,9 +1,11 @@
 //! Theme, shell (sidebar + content) and view dispatch. Palette follows the brand sheet.
 
 pub mod about_view;
+pub mod apps_view;
 pub mod result_view;
 pub mod scan_view;
 pub mod settings_view;
+pub mod system_view;
 pub mod widgets;
 
 use crate::app::{App, View};
@@ -109,12 +111,14 @@ pub fn apply_theme(ctx: &egui::Context) {
     });
 }
 
-fn nav() -> [(View, &'static str); 7] {
+fn nav() -> [(View, &'static str); 9] {
     [
         (View::Home, t("Ana Sayfa", "Home")),
         (View::Scan, t("Tarama", "Scan")),
         (View::Results, t("Sonuçlar", "Results")),
         (View::Clean, t("Temizlik", "Cleanup")),
+        (View::Programs, t("Programlar", "Programs")),
+        (View::System, t("Bellek ve Başlangıç", "Memory & Startup")),
         (View::Cache, t("AI Önbelleği", "AI cache")),
         (View::Settings, t("Ayarlar", "Settings")),
         (View::About, t("Hakkında", "About")),
@@ -143,12 +147,15 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
             View::Scan => scan_view::progress(app, ui),
             View::Results => result_view::results(app, ui),
             View::Clean => result_view::clean(app, ui),
+            View::Programs => apps_view::programs(app, ui),
+            View::System => system_view::system(app, ui),
             View::Cache => settings_view::cache(app, ui),
             View::Settings => settings_view::settings(app, ui),
             View::About => about_view::about(app, ui),
         });
 
     result_view::confirm_modal(app, ui.ctx());
+    apps_view::flow_modal(app, ui.ctx());
     result_view::ai_modal(app, ui.ctx());
     toast(app, ui.ctx());
 }

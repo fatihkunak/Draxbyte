@@ -2,7 +2,8 @@
 
 use crate::config::{expand_path, Config, RulesConfig};
 use crate::core::rules::RuleEngine;
-use crate::core::safety::is_protected;
+use crate::core::safety::{is_protected, is_root};
+use crate::core::syslocs;
 use crate::models::{now_secs, Category, ScanItem, ScanSummary};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use rayon::prelude::*;
@@ -22,21 +23,29 @@ pub struct ScanOptions {
 }
 
 impl ScanOptions {
+    /// `roots: None` = the configured defaults plus, when enabled, the system folders and every
+    /// internal drive. Explicit roots are scanned exactly as given.
     pub fn from_config(cfg: &Config, roots: Option<Vec<PathBuf>>) -> Self {
         Self {
-            roots: roots.unwrap_or_else(|| {
-                cfg.scan
-                    .default_paths
-                    .iter()
-                    .map(|p| expand_path(p))
-                    .collect()
-            }),
+            roots: roots.unwrap_or_else(|| default_roots(cfg)),
             max_depth: cfg.scan.max_depth,
             min_size: cfg.scan.min_size_mb * 1024 * 1024,
             exclude: cfg.scan.exclude_patterns.clone(),
             rules: cfg.rules.clone(),
         }
     }
+}
+
+/// The configured default paths, plus system folders / internal drives when switched on.
+pub fn default_roots(cfg: &Config) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = cfg.scan.default_paths.iter().map(|p| expand_path(p)).collect();
+    if cfg.scan.all_drives {
+        v.extend(syslocs::fixed_drive_roots());
+    }
+    if cfg.scan.include_system {
+        v.extend(syslocs::system_roots());
+    }
+    syslocs::dedupe_roots(v)
 }
 
 /// Live counters the UI polls while the scan runs.
@@ -250,7 +259,8 @@ pub fn scan(opts: &ScanOptions, cancel: &AtomicBool, progress: &Progress) -> Sca
     let mut subtrees: Vec<PathBuf> = Vec::new();
 
     for root in &opts.roots {
-        if is_protected(root) || !root.is_dir() {
+        // A drive root is "protected" (never deleted itself) but its children are scanned.
+        if (is_protected(root) && !is_root(root)) || !root.is_dir() {
             continue;
         }
         let rd = match std::fs::read_dir(root) {

@@ -3,6 +3,7 @@
 
 mod app;
 mod cli;
+mod panels;
 mod ui;
 
 use anyhow::Result;

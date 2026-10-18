@@ -42,6 +42,59 @@ pub enum Cmd {
     /// Clean what a scan finds. DRY-RUN unless --apply is given.
     /// Read-only Docker disk usage check (`docker system df`).
     Docker,
+    /// Show the Recycle Bin / Trash size; `--empty` empties it for good.
+    Recycle {
+        #[arg(long)]
+        empty: bool,
+    },
+    /// List installed programs with size and last use (Windows).
+    Apps {
+        /// Only programs not used for at least this many days (programs with no record are listed too)
+        #[arg(long)]
+        unused_days: Option<i64>,
+        /// Include Microsoft Store packages (slower)
+        #[arg(long)]
+        store: bool,
+        /// Include system components hidden from "Apps & features"
+        #[arg(long)]
+        hidden: bool,
+        #[arg(long, default_value_t = 60)]
+        limit: usize,
+    },
+    /// Show what removing a program would touch; with --apply remove it completely (Windows).
+    Uninstall {
+        /// Name (or part of it) as listed by `draxbyte apps`
+        query: String,
+        /// Really do it. Without this nothing is changed.
+        #[arg(long)]
+        apply: bool,
+        /// Skip the vendor's uninstaller and delete the program by force
+        #[arg(long)]
+        force: bool,
+        /// Ask the vendor's uninstaller for silent mode when it has one
+        #[arg(long)]
+        silent: bool,
+        /// Send leftover files to the Recycle Bin instead of deleting them for good
+        #[arg(long)]
+        trash: bool,
+        /// Also remove leftovers marked "probable" (default: only exact matches)
+        #[arg(long)]
+        probable: bool,
+    },
+    /// Memory use per program (and `--trim` to move idle memory out of RAM, Windows).
+    Memory {
+        #[arg(long)]
+        trim: bool,
+        #[arg(long, default_value_t = 15)]
+        limit: usize,
+    },
+    /// Programs that start with Windows. `--disable NAME` / `--enable NAME` switch one.
+    Startup {
+        #[arg(long)]
+        disable: Option<String>,
+        #[arg(long)]
+        enable: Option<String>,
+    },
     Clean {
         paths: Vec<PathBuf>,
         /// Also include yellow ("be careful") items. Green only by default.
@@ -127,6 +180,27 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                     "{}",
                     tf!("... ve {} öğe daha", "... and {} more", items.len() - limit)
                 );
+            }
+            Ok(())
+        }
+        Some(Cmd::Apps { unused_days, store, hidden, limit }) => apps_cmd(unused_days, store, hidden, limit),
+        Some(Cmd::Uninstall { query, apply, force, silent, trash, probable }) => {
+            uninstall_cmd(&query, apply, force, silent, trash, probable)
+        }
+        Some(Cmd::Memory { trim, limit }) => memory_cmd(trim, limit),
+        Some(Cmd::Startup { disable, enable }) => startup_cmd(disable, enable),
+        Some(Cmd::Recycle { empty }) => {
+            use draxbyte::core::recycle;
+            let before = recycle::status().map_err(|e| anyhow::anyhow!(e))?;
+            println!(
+                "{}",
+                tf!("{} öğe, {}", "{} items, {}", before.items, human_bytes(before.bytes))
+            );
+            if empty {
+                recycle::empty().map_err(|e| anyhow::anyhow!(e))?;
+                println!("{}", t("Boşaltıldı.", "Emptied."));
+            } else if before.items > 0 {
+                println!("{}", t("Boşaltmak için: draxbyte recycle --empty", "To empty it: draxbyte recycle --empty"));
             }
             Ok(())
         }
@@ -233,4 +307,178 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
             Ok(())
         }
     }
+}
+
+// ---- programs / memory / startup ----------------------------------------------------------------
+
+fn memory_cmd(trim: bool, limit: usize) -> Result<()> {
+    use draxbyte::core::memory;
+    let (info, groups) = memory::snapshot();
+    println!(
+        "{}",
+        tf!(
+            "RAM: {} toplam, {} kullanımda, {} boş (kullanılabilir)",
+            "RAM: {} total, {} in use, {} available",
+            human_bytes(info.total),
+            human_bytes(info.used()),
+            human_bytes(info.available)
+        )
+    );
+    for g in groups.iter().take(limit) {
+        println!(
+            "{:>10}  {:>3} {:<28}{}",
+            human_bytes(g.bytes),
+            g.pids.len(),
+            g.name,
+            if g.protected { t("  (sistem — kapatılamaz)", "  (system — cannot be closed)") } else { "" }
+        );
+    }
+    if trim {
+        let r = memory::trim_working_sets().map_err(|e| anyhow::anyhow!(e))?;
+        println!(
+            "{}",
+            tf!(
+                "{} işlemin boşta belleği diske alındı ({} atlandı). Boş bellek: {} → {}. Not: bu geçicidir, uygulamalar ihtiyaç duydukça geri yükler.",
+                "Idle memory of {} processes moved out of RAM ({} skipped). Available: {} → {}. Note: temporary — apps read it back when they need it.",
+                r.trimmed,
+                r.skipped,
+                human_bytes(r.available_before),
+                human_bytes(r.available_after)
+            )
+        );
+    }
+    Ok(())
+}
+
+fn startup_cmd(disable: Option<String>, enable: Option<String>) -> Result<()> {
+    use draxbyte::core::startup;
+    let entries = startup::list();
+    for (name, on) in [(disable, false), (enable, true)].into_iter().filter_map(|(n, o)| n.map(|n| (n, o))) {
+        let e = entries
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case(&name))
+            .ok_or_else(|| anyhow::anyhow!(tf!("başlangıçta '{}' yok", "no startup entry '{}'", name)))?;
+        startup::set_enabled(e, on).map_err(|m| anyhow::anyhow!(m))?;
+        println!("{} {}", if on { t("açıldı:", "enabled:") } else { t("kapatıldı:", "disabled:") }, e.name);
+    }
+    for e in startup::list() {
+        println!("{:<9} {:<32} {}", if e.enabled { t("açık", "on") } else { t("kapalı", "off") }, e.name, e.command);
+    }
+    Ok(())
+}
+
+fn apps_cmd(unused_days: Option<i64>, store: bool, hidden: bool, limit: usize) -> Result<()> {
+    use draxbyte::core::apps::{self, human_days, Removability};
+    if !apps::supported() {
+        bail!("{}", t("Program yönetimi bu platformda yok", "Program management is not available on this platform"));
+    }
+    let now = draxbyte::models::now_secs();
+    let mut list = apps::inventory(store);
+    apps::fill_missing_sizes(&mut list, &AtomicBool::new(false));
+    list.retain(|a| hidden || !a.system_component);
+    if let Some(n) = unused_days {
+        list.retain(|a| a.days_unused(now).map(|d| d >= n).unwrap_or(true));
+    }
+    list.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    println!("{:>10}  {:<16} {:<44} {}", t("BOYUT", "SIZE"), t("SON KULLANIM", "LAST USED"), t("PROGRAM", "PROGRAM"), t("DURUM", "STATUS"));
+    for a in list.iter().take(limit) {
+        let used = a.days_unused(now).map(human_days).unwrap_or_else(|| "?".into());
+        let status = match &a.removable {
+            Removability::Normal => String::new(),
+            Removability::Blocked(_) => t("üretici engelli → zorla", "vendor-blocked → force").to_string(),
+            Removability::Sealed(_) => t("sistem korumalı", "system-protected").to_string(),
+        };
+        println!("{:>10}  {:<16} {:<44} {}", human_bytes(a.size_bytes), used, a.name.chars().take(44).collect::<String>(), status);
+    }
+    println!("{}", tf!("{} program (gösterilen: ilk {})", "{} programs (showing first {})", list.len(), limit.min(list.len())));
+    Ok(())
+}
+
+fn uninstall_cmd(query: &str, apply: bool, force: bool, silent: bool, trash: bool, probable: bool) -> Result<()> {
+    use draxbyte::core::apps::{self, Confidence, RemoveOptions, Removability};
+    if !apps::supported() {
+        bail!("{}", t("Program yönetimi bu platformda yok", "Program management is not available on this platform"));
+    }
+    let all = apps::inventory(true);
+    let q = query.to_lowercase();
+    let exact: Vec<_> = all.iter().filter(|a| a.name.to_lowercase() == q || a.id.to_lowercase() == q).collect();
+    let found: Vec<_> = if exact.len() == 1 { exact } else { all.iter().filter(|a| a.name.to_lowercase().contains(&q)).collect() };
+    let app = match found.as_slice() {
+        [] => bail!("{}", tf!("'{}' adında program yok", "no program matches '{}'", query)),
+        [one] => (*one).clone(),
+        many => {
+            for a in many {
+                eprintln!("  {} {}", a.name, a.version);
+            }
+            bail!("{}", t("Birden çok eşleşme; adı daha tam yaz", "Several matches; type the name more exactly"));
+        }
+    };
+    let others: Vec<_> = all.iter().filter(|a| a.id != app.id).cloned().collect();
+
+    println!("{} {} {}  ({})", app.name, app.version, app.publisher, app.install_location.as_ref().map(|p| p.display().to_string()).unwrap_or_default());
+    println!("{}", match &app.removable {
+        Removability::Normal => t("kaldırıcı: var", "uninstaller: available").to_string(),
+        Removability::Blocked(m) => format!("{}: {m}", t("kaldırıcı", "uninstaller")),
+        Removability::Sealed(m) => format!("{}: {m}", t("KALDIRILAMAZ", "CANNOT BE REMOVED")),
+    });
+    if let Removability::Sealed(m) = &app.removable {
+        bail!("{m}");
+    }
+    let running = app.install_location.as_deref().map(apps::processes_under).unwrap_or_default();
+    for g in &running {
+        println!("{}", tf!("çalışıyor: {} ({} işlem)", "running: {} ({} processes)", g.name, g.pids.len()));
+    }
+    let leftovers = apps::find_leftovers(&app, &others);
+    for l in &leftovers {
+        println!(
+            "  [{}] {:>10}  {}  — {}",
+            if l.confidence == Confidence::High { "x" } else { "?" },
+            human_bytes(l.size),
+            l.label,
+            l.why
+        );
+    }
+    if !apply {
+        println!("{}", t("KURU ÇALIŞTIRMA: hiçbir şey değişmedi. Gerçekten kaldırmak için --apply ekle.", "DRY RUN: nothing changed. Add --apply to really remove it."));
+        return Ok(());
+    }
+
+    if !running.is_empty() {
+        let r = apps::close_running(&app);
+        println!("{}", tf!("{} işlem kapatıldı", "{} processes closed", r.asked));
+    }
+    match apps::create_restore_point(&app.name) {
+        Ok(()) => println!("{}", t("Geri yükleme noktası oluşturuldu", "Restore point created")),
+        Err(e) => println!("{}", tf!("Geri yükleme noktası oluşturulamadı ({e}); devam ediliyor", "Restore point not created ({e}); continuing")),
+    }
+    if !force {
+        let by_force_flag = matches!(app.removable, Removability::Blocked(_));
+        match apps::run_uninstaller(&app, silent, by_force_flag) {
+            Ok(code) => println!("{}", tf!("Kaldırıcı bitti (çıkış kodu {})", "Uninstaller finished (exit code {})", code)),
+            Err(e) => println!("{}", tf!("Kaldırıcı çalışmadı: {e}", "Uninstaller did not run: {e}")),
+        }
+        // Many uninstallers hand over to a copy of themselves and return at once.
+        for _ in 0..60 {
+            if !apps::still_registered(&app) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+    }
+    let after = apps::find_leftovers(&app, &others);
+    let chosen: Vec<_> = after.into_iter().filter(|l| probable || l.confidence == Confidence::High).collect();
+    let rep = apps::remove_leftovers(&app, &chosen, &RemoveOptions { permanent: !trash, backup_dir: apps::backup_dir_for(&app) });
+    for i in &rep.items {
+        println!("  {}  {}{}", if i.ok { "OK  " } else { "FAIL" }, i.label, if i.message.is_empty() { String::new() } else { format!("  ({})", i.message) });
+    }
+    println!(
+        "{}",
+        tf!("Geri kazanılan: {} · yedek: {}", "Freed: {} · backup: {}", human_bytes(rep.freed), rep.backup_dir.display())
+    );
+    match apps::after_removal(&app) {
+        Some(Ok(m)) => println!("{m}"),
+        Some(Err(e)) => println!("{}", tf!("Ek adım yapılamadı ({e}) — yönetici olarak çalıştır", "Extra step failed ({e}) — run as administrator")),
+        None => {}
+    }
+    Ok(())
 }

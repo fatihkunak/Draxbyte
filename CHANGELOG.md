@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## Unreleased
+- New: **Shrink the Docker disk image** as a part of Full Optimization (Windows, WSL2 backend, administrator rights, off by default; `draxbyte optimize --docker-compact`). Docker's clean-up frees space inside its disk image only; this gives it back to Windows. It records the running containers, stops Docker, shuts WSL down, compacts the disk with diskpart, starts Docker again and starts every container that was running before, in the old order, retrying and checking at the end. Nothing inside the disk is deleted. If Docker does not stop, nothing is changed; a container that does not come back is named in the result
+- Change: the approval step lists unused Docker volumes with their sizes and marks named volumes (data you created on purpose) apart from anonymous ones
+
 ## 0.5.0 — 2026-10-19
 - New: **Full Optimization wizard** (scope → read-only analysis → approval → run → result). Safe cleanup (green items only), duplicates (oldest copy stays), Docker piece by piece (build cache, untagged images, networks by default; stopped containers, unused images and volumes only when ticked, with the list shown first), Recycle Bin, memory (Windows). Nothing changes before the approval; files go to the Recycle Bin first. `draxbyte optimize` (dry run unless `--apply`)
 

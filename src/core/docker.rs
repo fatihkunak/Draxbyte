@@ -374,6 +374,238 @@ pub fn prune(part: Part) -> Result<String, String> {
     Ok(out.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string())
 }
 
+// ---- shrinking Docker Desktop's virtual disk (Windows, WSL2 backend) ----------------------------
+
+/// The WSL2 virtual disk that holds Docker's data.
+#[cfg(windows)]
+pub fn disk_image_path() -> Option<std::path::PathBuf> {
+    let base = std::path::PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Docker").join("wsl");
+    [base.join("disk").join("docker_data.vhdx"), base.join("data").join("ext4.vhdx")].into_iter().find(|p| p.is_file())
+}
+
+#[cfg(not(windows))]
+pub fn disk_image_path() -> Option<std::path::PathBuf> {
+    None
+}
+
+/// Why the disk image cannot be shrunk here (`None` = it can, as far as one can tell without trying).
+pub fn compact_blocker() -> Option<String> {
+    if !cfg!(windows) {
+        return Some(t("Yalnızca Windows'ta (macOS'ta Docker boşalan alanı kendisi geri verir)", "Windows only (on macOS Docker gives freed space back by itself)").to_string());
+    }
+    if !crate::core::elevate::is_elevated() {
+        return Some(t("Yönetici izni gerekir: Draxbyte'ı yönetici olarak yeniden aç", "Needs administrator rights: reopen Draxbyte as administrator").to_string());
+    }
+    if disk_image_path().is_none() {
+        return Some(t("WSL2 disk imajı bulunamadı", "WSL2 disk image not found").to_string());
+    }
+    None
+}
+
+/// `wsl` prints UTF-16 (with NULs and sometimes a BOM); other tools print UTF-8.
+pub fn decode_cli_text(raw: &[u8]) -> String {
+    if raw.contains(&0) {
+        let units: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        String::from_utf16_lossy(&units)
+    } else {
+        String::from_utf8_lossy(raw).into_owned()
+    }
+}
+
+/// One name per non-empty line.
+pub fn parse_names(raw: &[u8]) -> Vec<String> {
+    decode_cli_text(raw)
+        .lines()
+        .map(|l| l.trim().trim_start_matches('\u{feff}').to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// Running WSL distributions that are not Docker's own: stopping WSL stops these too.
+pub fn other_wsl_running(running: &[String]) -> Vec<String> {
+    running.iter().filter(|n| !n.to_lowercase().starts_with("docker-desktop")).cloned().collect()
+}
+
+/// The two diskpart scripts: compact, and detach (always run, even when compacting failed).
+pub fn diskpart_scripts(vhdx: &std::path::Path) -> (String, String) {
+    let sel = format!("select vdisk file=\"{}\"", vhdx.display());
+    (format!("{sel}\nattach vdisk readonly\ncompact vdisk\ndetach vdisk\nexit\n"), format!("{sel}\ndetach vdisk\nexit\n"))
+}
+
+/// Containers that were running before and are not now.
+pub fn containers_to_restore(before: &[String], now: &[String]) -> Vec<String> {
+    before.iter().filter(|b| !now.contains(b)).cloned().collect()
+}
+
+/// Starts every container of `was_running` that is down, in that order, and checks again: up to
+/// `rounds` passes, because a container can fail while the daemon is still settling. Returns
+/// (started by us, still down at the end). `ps` lists the running names, `start` starts one.
+pub fn restore_containers(
+    was_running: &[String],
+    rounds: u32,
+    mut ps: impl FnMut() -> Vec<String>,
+    mut start: impl FnMut(&str) -> bool,
+    mut pause: impl FnMut(),
+) -> (Vec<String>, Vec<String>) {
+    let mut started: Vec<String> = Vec::new();
+    for _ in 0..rounds {
+        let todo = containers_to_restore(was_running, &ps());
+        if todo.is_empty() {
+            break;
+        }
+        for name in &todo {
+            if start(name) && !started.contains(name) {
+                started.push(name.clone());
+            }
+        }
+        pause();
+    }
+    let down = containers_to_restore(was_running, &ps());
+    started.retain(|n| !down.contains(n));
+    (started, down)
+}
+
+/// Names of the running containers, oldest first.
+pub fn running_container_names() -> Vec<String> {
+    let mut v: Vec<String> = run_capture(&["ps", "--format", "{{.Names}}"], 20).unwrap_or_default().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    v.reverse();
+    v
+}
+
+/// Runs a program, bounded by `secs`; stdout on success, the output text on failure.
+fn run_prog(program: &str, args: &[&str], secs: u64) -> Result<Vec<u8>, String> {
+    let mut c = Command::new(program);
+    c.args(args).stdin(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000);
+    }
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(c.output());
+    });
+    match rx.recv_timeout(Duration::from_secs(secs)) {
+        Ok(Ok(out)) if out.status.success() => Ok(out.stdout),
+        Ok(Ok(out)) => Err(format!("{} {}", decode_cli_text(&out.stderr).trim(), decode_cli_text(&out.stdout).trim()).trim().to_string()),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err(t("zaman aşımı", "timed out").to_string()),
+    }
+}
+
+/// Running distributions (installed names ∩ the `--running` list, so a localized "none running"
+/// message is never mistaken for a name).
+pub fn running_wsl_distros() -> Vec<String> {
+    let installed = run_prog("wsl", &["-l", "-q"], 15).map(|o| parse_names(&o)).unwrap_or_default();
+    let running = run_prog("wsl", &["-l", "--running", "-q"], 15).map(|o| parse_names(&o)).unwrap_or_default();
+    running.into_iter().filter(|r| installed.contains(r)).collect()
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CompactReport {
+    pub before: u64,
+    pub after: u64,
+    /// Containers that were running before and were started again.
+    pub restored: Vec<String>,
+    pub not_restored: Vec<String>,
+    /// Something went wrong after Docker was stopped (Docker was still started again).
+    pub error: Option<String>,
+}
+
+fn docker_down() -> bool {
+    run_capture(&["info"], 10).is_err()
+}
+
+fn wait_until(mut done: impl FnMut() -> bool, tries: u32, every_secs: u64) -> bool {
+    for _ in 0..tries {
+        if done() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_secs(every_secs));
+    }
+    done()
+}
+
+fn start_docker_desktop() {
+    let exe = std::env::var_os("ProgramFiles").map(|p| std::path::PathBuf::from(p).join("Docker").join("Docker").join("Docker Desktop.exe"));
+    match exe.filter(|p| p.is_file()) {
+        Some(p) => {
+            let _ = Command::new(p).stdin(Stdio::null()).spawn();
+        }
+        None => {
+            let _ = run_capture(&["desktop", "start"], 60);
+        }
+    }
+}
+
+/// Gives the space Docker freed inside its disk back to Windows. Stops Docker and every container,
+/// shuts WSL down, compacts the virtual disk with diskpart, starts Docker again and starts the
+/// containers that were running before. Nothing inside the disk is deleted.
+///
+/// `Err` = nothing was touched (blocked or Docker would not stop). `Ok` with `error` = Docker was
+/// restarted and the containers restored as far as possible. `step` receives progress text.
+pub fn compact_disk_image(mut step: impl FnMut(&str)) -> Result<CompactReport, String> {
+    if let Some(b) = compact_blocker() {
+        return Err(b);
+    }
+    let vhdx = disk_image_path().ok_or_else(|| t("WSL2 disk imajı bulunamadı", "WSL2 disk image not found").to_string())?;
+    let size = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+    let mut rep = CompactReport { before: size(&vhdx), ..Default::default() };
+    // `docker ps` lists the newest first; the oldest (usually databases) must come back first.
+    let mut was_running: Vec<String> = run_capture(&["ps", "--format", "{{.Names}}"], 20)?.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    was_running.reverse();
+
+    step(t("Docker kapatılıyor…", "Stopping Docker…"));
+    run_capture(&["desktop", "stop"], 240).map_err(|e| format!("docker desktop stop: {e} ({})", t("Docker Desktop 4.37 veya yenisi gerekir", "needs Docker Desktop 4.37 or newer")))?;
+    if !wait_until(docker_down, 40, 3) {
+        return Err(t("Docker kapanmadı; hiçbir şey değiştirilmedi", "Docker did not stop; nothing was changed").to_string());
+    }
+
+    step(t("WSL kapatılıyor…", "Shutting WSL down…"));
+    match run_prog("wsl", &["--shutdown"], 60) {
+        Err(e) => rep.error = Some(format!("wsl --shutdown: {e}")),
+        Ok(_) => {
+            std::thread::sleep(Duration::from_secs(8));
+            step(t("Disk imajı sıkıştırılıyor (birkaç dakika sürebilir)…", "Compacting the disk image (can take a few minutes)…"));
+            let (compact, detach) = diskpart_scripts(&vhdx);
+            let dir = std::env::temp_dir();
+            let (f1, f2) = (dir.join("draxbyte-compact.txt"), dir.join("draxbyte-detach.txt"));
+            if std::fs::write(&f1, compact).and_then(|_| std::fs::write(&f2, detach)).is_ok() {
+                if let Err(e) = run_prog("diskpart", &["/s", &f1.to_string_lossy()], 1800) {
+                    rep.error = Some(format!("diskpart: {e}"));
+                }
+                let _ = run_prog("diskpart", &["/s", &f2.to_string_lossy()], 120);
+            } else {
+                rep.error = Some(t("diskpart betiği yazılamadı", "could not write the diskpart script").to_string());
+            }
+            let _ = std::fs::remove_file(&f1);
+            let _ = std::fs::remove_file(&f2);
+        }
+    }
+
+    step(t("Docker yeniden açılıyor…", "Starting Docker again…"));
+    start_docker_desktop();
+    if !wait_until(|| !docker_down(), 60, 5) {
+        rep.error.get_or_insert_with(|| t("Docker yeniden açılmadı; elle aç, konteynerler 'restart' politikasına bağlı", "Docker did not come back; open it by hand").to_string());
+        rep.not_restored = was_running;
+        rep.after = size(&vhdx);
+        return Ok(rep);
+    }
+    std::thread::sleep(Duration::from_secs(15));
+    step(t("Önceden çalışan konteynerler başlatılıyor…", "Starting the containers that were running…"));
+    let (restored, down) = restore_containers(
+        &was_running,
+        4,
+        || run_capture(&["ps", "--format", "{{.Names}}"], 20).unwrap_or_default().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect(),
+        |n| run_capture(&["start", n], 60).is_ok(),
+        || std::thread::sleep(Duration::from_secs(10)),
+    );
+    rep.restored = restored;
+    rep.not_restored = down;
+    rep.after = size(&vhdx);
+    Ok(rep)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -408,6 +640,79 @@ mod tests {
         assert!(v[1].info.contains("ADLI") || v[1].info.contains("NAMED"));
         assert!(is_anonymous_volume(&anon) && !is_anonymous_volume("supabase_db"));
         assert!(parse_df_volumes("garbage").is_empty());
+    }
+
+    #[test]
+    fn wsl_output_is_decoded_and_only_real_names_survive() {
+        let utf16: Vec<u8> = "\u{feff}Ubuntu\r\ndocker-desktop\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        assert_eq!(parse_names(&utf16), vec!["Ubuntu", "docker-desktop"]);
+        assert_eq!(parse_names(b"a\n\n b \n"), vec!["a", "b"]);
+        let running = vec!["docker-desktop".to_string(), "Ubuntu".to_string()];
+        assert_eq!(other_wsl_running(&running), vec!["Ubuntu"]);
+        assert!(other_wsl_running(&["docker-desktop".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn diskpart_scripts_detach_even_when_compacting_fails() {
+        let (c, d) = diskpart_scripts(std::path::Path::new(r"C:\x\docker_data.vhdx"));
+        assert!(c.contains("attach vdisk readonly") && c.contains("compact vdisk") && c.contains("detach vdisk"));
+        assert!(d.contains("detach vdisk") && !d.contains("compact"));
+        assert!(c.contains("docker_data.vhdx\""));
+    }
+
+    #[test]
+    fn only_containers_that_were_running_and_are_down_are_restored() {
+        let before: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let now: Vec<String> = ["b"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(containers_to_restore(&before, &now), vec!["a", "c"]);
+        assert!(containers_to_restore(&[], &now).is_empty());
+    }
+
+    #[test]
+    fn restore_retries_until_every_container_is_up_and_keeps_the_order() {
+        use std::cell::RefCell;
+        let was: Vec<String> = ["db", "api", "web"].iter().map(|s| s.to_string()).collect();
+        let up: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        let order: RefCell<Vec<String>> = RefCell::new(Vec::new());
+        let attempts: RefCell<u32> = RefCell::new(0);
+        let (started, down) = restore_containers(
+            &was,
+            4,
+            || up.borrow().clone(),
+            |n| {
+                order.borrow_mut().push(n.to_string());
+                // "api" fails on its first try, as when the daemon is still settling
+                if n == "api" && *attempts.borrow() == 0 {
+                    *attempts.borrow_mut() += 1;
+                    return false;
+                }
+                up.borrow_mut().push(n.to_string());
+                true
+            },
+            || {},
+        );
+        assert_eq!(started, vec!["db", "web", "api"]);
+        assert!(down.is_empty());
+        assert_eq!(&order.borrow()[..3], &["db", "api", "web"], "first pass follows the original order");
+    }
+
+    #[test]
+    fn restore_reports_what_could_not_be_started() {
+        let was: Vec<String> = ["a", "b"].iter().map(|s| s.to_string()).collect();
+        let up = std::cell::RefCell::new(Vec::<String>::new());
+        let (started, down) = restore_containers(&was, 3, || up.borrow().clone(), |n| if n == "a" { up.borrow_mut().push("a".into()); true } else { false }, || {});
+        assert_eq!(started, vec!["a"]);
+        assert_eq!(down, vec!["b"]);
+        // nothing to do when everything already runs
+        let (s2, d2) = restore_containers(&was, 3, || was.clone(), |_| panic!("must not start anything"), || {});
+        assert!(s2.is_empty() && d2.is_empty());
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn compaction_is_honestly_unsupported_off_windows() {
+        assert!(compact_blocker().is_some());
+        assert!(compact_disk_image(|_| {}).is_err());
     }
 
     #[test]

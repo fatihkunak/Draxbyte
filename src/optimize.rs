@@ -205,6 +205,7 @@ pub fn task_title(task: Task) -> &'static str {
         Task::Cleanup => t("Güvenli temizlik", "Safe cleanup"),
         Task::Dupes => t("Kopya dosyalar", "Duplicate files"),
         Task::Docker => t("Docker temizliği", "Docker clean-up"),
+        Task::DockerCompact => t("Docker disk imajını küçült", "Shrink the Docker disk image"),
         Task::RecycleBin => t("Çöp Kutusunu boşalt", "Empty the Recycle Bin"),
         Task::Memory => t("Belleği boşalt", "Free memory"),
     }

@@ -28,12 +28,14 @@ pub enum Task {
     Cleanup,
     Dupes,
     Docker,
+    /// Give the space Docker freed back to Windows (stops Docker for a few minutes).
+    DockerCompact,
     RecycleBin,
     Memory,
 }
 
 impl Task {
-    pub const ALL: [Task; 5] = [Task::Cleanup, Task::Dupes, Task::Docker, Task::RecycleBin, Task::Memory];
+    pub const ALL: [Task; 6] = [Task::Cleanup, Task::Dupes, Task::Docker, Task::DockerCompact, Task::RecycleBin, Task::Memory];
 }
 
 /// What the user agreed to. `Default` is the full set; the UI/CLI switch parts off.
@@ -44,6 +46,9 @@ pub struct Scope {
     pub docker: bool,
     /// Which Docker clean-ups are ticked (used when `docker` is on).
     pub docker_parts: Parts,
+    /// Shrink Docker's disk image afterwards. Off by default: Docker and every container stop for
+    /// a few minutes (the ones that were running are started again).
+    pub docker_compact: bool,
     pub recycle_bin: bool,
     pub memory: bool,
     /// `None` = the configured default scan (all drives and system folders when enabled).
@@ -59,6 +64,7 @@ impl Default for Scope {
             dupes: true,
             docker: true,
             docker_parts: Parts::default(),
+            docker_compact: false,
             recycle_bin: true,
             memory: true,
             scan_roots: None,
@@ -74,6 +80,7 @@ impl Scope {
             Task::Cleanup => self.cleanup,
             Task::Dupes => self.dupes,
             Task::Docker => self.docker,
+            Task::DockerCompact => self.docker_compact,
             Task::RecycleBin => self.recycle_bin,
             Task::Memory => self.memory,
         }
@@ -84,6 +91,7 @@ impl Scope {
             Task::Cleanup => self.cleanup = on,
             Task::Dupes => self.dupes = on,
             Task::Docker => self.docker = on,
+            Task::DockerCompact => self.docker_compact = on,
             Task::RecycleBin => self.recycle_bin = on,
             Task::Memory => self.memory = on,
         }
@@ -111,6 +119,8 @@ pub struct OptProgress {
     pub clean_done: AtomicUsize,
     pub clean_total: AtomicUsize,
     pub freed: AtomicU64,
+    /// What the long running step is doing right now (shown on the progress screen).
+    pub note: std::sync::Mutex<String>,
 }
 
 /// What `analyze` found. Read-only: building this never changes the machine.
@@ -133,8 +143,30 @@ pub struct Analysis {
     pub mem: Option<MemInfo>,
     /// Startup entries that are switched on. Shown as a hint only; never changed here.
     pub startup_enabled: usize,
+    /// Facts about shrinking Docker's disk image (only when that part is in the scope).
+    pub compact: Option<CompactInfo>,
     pub free_before: u64,
     pub cancelled: bool,
+}
+
+/// What the user needs to know before agreeing to shrink Docker's disk image.
+#[derive(Debug, Clone, Default)]
+pub struct CompactInfo {
+    pub disk_image: u64,
+    /// Rough space returned to Windows: the file minus what Docker will still hold afterwards.
+    pub estimate: u64,
+    /// Other WSL distributions that are running; they stop too.
+    pub other_wsl: Vec<String>,
+    /// Containers that are running now and will be started again afterwards.
+    pub running: Vec<String>,
+    /// Why it cannot run (`None` = it can).
+    pub blocker: Option<String>,
+}
+
+/// File size minus what Docker still holds after the chosen clean-up (never below 0).
+pub fn compact_estimate(d: &DockerDetail, disk_image: u64, parts: Parts) -> u64 {
+    let used: u64 = d.rows.iter().map(|r| docker::parse_size(&r.size)).sum();
+    disk_image.saturating_sub(used.saturating_sub(docker_estimate(d, parts)))
 }
 
 /// Green items only: never red, never yellow. (`pre_delete_check` re-checks every one at delete time.)
@@ -235,12 +267,27 @@ pub fn analyze(cfg: &Config, scope: &Scope, cancel: &AtomicBool, p: &OptProgress
     if scope.recycle_bin {
         a.bin = recycle::status().ok();
     }
-    if scope.docker {
+    if scope.docker || scope.docker_compact {
         let st = docker::check();
         if let DockerStatus::Ok(rows) = &st {
             a.docker = Some(docker::detail(rows.clone()));
         }
         a.docker_state = Some(st);
+    }
+    if scope.docker_compact {
+        let img = a.docker.as_ref().and(docker::disk_image_path()).and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len()).unwrap_or(0);
+        let blocker = docker::compact_blocker().or_else(|| match (&a.docker, img) {
+            (None, _) => Some(crate::i18n::t("Docker çalışmıyor", "Docker is not running").to_string()),
+            (_, 0) => Some(crate::i18n::t("disk imajı bulunamadı", "disk image not found").to_string()),
+            _ => None,
+        });
+        a.compact = Some(CompactInfo {
+            disk_image: img,
+            estimate: a.docker.as_ref().map(|d| compact_estimate(d, img, if scope.docker { scope.docker_parts } else { Parts::none() })).unwrap_or(0),
+            other_wsl: if blocker.is_none() { docker::other_wsl_running(&docker::running_wsl_distros()) } else { Vec::new() },
+            running: if blocker.is_none() { docker::running_container_names() } else { Vec::new() },
+            blocker,
+        });
     }
     if scope.memory {
         a.mem = Some(memory::snapshot().0);
@@ -309,6 +356,7 @@ pub fn apply(an: &Analysis, scope: &Scope, permanent: bool, cancel: &AtomicBool,
                 file_step(task, &dupes::to_scan_items(&refs), permanent, cancel, p, &mut rep)
             }
             Task::Docker => docker_step(an, scope.docker_parts),
+            Task::DockerCompact => compact_step(an, p),
             Task::RecycleBin => bin_step(),
             Task::Memory => memory_step(),
         };
@@ -369,6 +417,36 @@ fn docker_step(an: &Analysis, parts: Parts) -> StepResult {
         (0, Some(e)) => StepResult { task, status: StepStatus::Failed(e), freed: 0, detail },
         (0, None) => StepResult { task, status: StepStatus::Skipped(crate::i18n::t("yapılacak bir şey yok", "nothing to do").into()), freed: 0, detail },
         _ => StepResult { task, status: StepStatus::Done, freed, detail },
+    }
+}
+
+fn compact_step(an: &Analysis, p: &OptProgress) -> StepResult {
+    let task = Task::DockerCompact;
+    match an.compact.as_ref().map(|c| c.blocker.clone()) {
+        None => return StepResult { task, status: StepStatus::Skipped(crate::i18n::t("analiz yapılmadı", "not analyzed").into()), freed: 0, detail: String::new() },
+        Some(Some(why)) => return StepResult { task, status: StepStatus::Skipped(why), freed: 0, detail: String::new() },
+        Some(None) => {}
+    }
+    let set_note = |s: &str| {
+        if let Ok(mut n) = p.note.lock() {
+            *n = s.to_string();
+        }
+    };
+    match docker::compact_disk_image(set_note) {
+        Err(e) => StepResult { task, status: StepStatus::Failed(e), freed: 0, detail: crate::i18n::t("hiçbir şey değiştirilmedi", "nothing was changed").into() },
+        Ok(r) => {
+            let freed = r.before.saturating_sub(r.after);
+            let mut detail = crate::tf!("{} → {}", "{} → {}", crate::models::human_bytes(r.before), crate::models::human_bytes(r.after));
+            detail.push_str(&crate::tf!(" · {} konteyner yeniden başlatıldı", " · {} containers started again", r.restored.len()));
+            if !r.not_restored.is_empty() {
+                detail.push_str(&crate::tf!(" · BAŞLAMAYAN: {}", " · NOT STARTED: {}", r.not_restored.join(", ")));
+            }
+            match (r.error, r.not_restored.is_empty()) {
+                (Some(e), _) => StepResult { task, status: StepStatus::Failed(e), freed, detail },
+                (None, false) => StepResult { task, status: StepStatus::Failed(crate::i18n::t("bazı konteynerler başlamadı", "some containers did not start").into()), freed, detail },
+                (None, true) => StepResult { task, status: StepStatus::Done, freed, detail },
+            }
+        }
     }
 }
 
@@ -439,13 +517,25 @@ mod tests {
     #[test]
     fn scope_toggles_by_task() {
         let mut s = Scope::default();
-        assert!(Task::ALL.iter().all(|t| s.has(*t)));
+        assert!(Task::ALL.iter().all(|t| s.has(*t) || *t == Task::DockerCompact), "everything but the Docker shrink is on by default");
+        assert!(!s.has(Task::DockerCompact), "stopping Docker is opt-in");
         for t in Task::ALL {
             s.set(t, false);
         }
         assert!(!s.any());
         s.set(Task::Docker, true);
         assert!(s.any() && s.has(Task::Docker) && !s.has(Task::Cleanup));
+    }
+
+    #[test]
+    fn compact_estimate_is_the_file_minus_what_docker_keeps() {
+        let row = |kind: &str, size: &str, rec: &str| docker::DockerRow { kind: kind.into(), total: 1, active: 0, size: size.into(), reclaimable: rec.into() };
+        let d = DockerDetail { rows: vec![row("Images", "13GB", "0B"), row("Local Volumes", "40GB", "0B"), row("Build Cache", "3GB", "2GB")], ..Default::default() };
+        let mut p = Parts::none();
+        assert_eq!(compact_estimate(&d, 60_000_000_000, p), 4_000_000_000, "no clean-up: only the slack");
+        p.set(Part::BuildCache, true);
+        assert_eq!(compact_estimate(&d, 60_000_000_000, p), 6_000_000_000);
+        assert_eq!(compact_estimate(&d, 10, p), 0, "never negative");
     }
 
     #[test]

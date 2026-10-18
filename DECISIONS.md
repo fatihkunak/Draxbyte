@@ -53,3 +53,8 @@
 - Seçilen: mevcut araçları tek plana bağlayan sihirbaz; her silme `cleaner::clean` üzerinden (kırmızı + `pre_delete_check` atlanamaz). Onay kutusu olmadan başlatılamaz.
 - Reddedilen: başlangıç programlarını/programları otomatik kapatma-kaldırma (geri dönüşü zor, karar kullanıcının); `docker system prune` (birimleri ve konteynerleri toplu siler); Docker vhdx sıkıştırma (WSL/Docker'ı kapatır, 7/24 konteynerleri öldürür): yalnız boyutu ve elle yolu gösterilir.
 - Docker riskli parçalar (durmuş konteyner, birim) varsayılan KAPALI; listeler onay ekranında.
+
+## Docker disk imajı küçültme (2026-10-19, önceki 'reddedildi' kararının düzeltmesi)
+- İlk karar: eklenmedi (konteynerleri durdurur, kazanç az görünüyordu). Kullanıcı elle yapınca 60 → 20,7 GB (+39 GB boş yer) çıktı ve konteynerler `docker desktop stop` ile açıkça durduğu için `unless-stopped` olsalar da KENDİLİĞİNDEN gelmedi (6'sı elle başlatıldı).
+- Seçilen: varsayılan KAPALI ayrı adım; önce konteyner listesi kaydedilir, sonda her biri eski sırayla başlatılıp doğrulanır (4 tur yeniden deneme); Docker kapanmazsa hiçbir şey yapılmaz; diskpart `detach` hata olsa da çalışır; sürece isimle öldürme yok (yalnız Docker'ın kendi `docker desktop stop` komutu ve `wsl --shutdown`).
+- Bilinen sınır: sıkıştırmanın tam akışı Rust'tan canlı çalıştırılmadı (yalnız saf parçalar ve yeniden başlatma mantığı testli); aynı komutlar elle doğrulandı. macOS'ta Docker boşalan alanı kendisi geri verir, adım 'desteklenmiyor' der.

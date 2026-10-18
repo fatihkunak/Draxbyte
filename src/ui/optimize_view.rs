@@ -28,6 +28,10 @@ fn task_help(task: Task) -> &'static str {
             "Docker'ı parça parça temizler: build önbelleği, boşta imajlar, ağlar güvenle gelir; durmuş konteynerler, kullanılmayan imajlar ve birimler ayrıca seçilir (listesi onay adımında görünür). Çalışan konteynerlere dokunulmaz.",
             "Cleans Docker piece by piece: build cache, dangling images and networks come by default; stopped containers, unused images and volumes are opt-in (the list is shown on the approval step). Running containers are never touched.",
         ),
+        Task::DockerCompact => t(
+            "Docker'ın içinde boşalan yeri Windows'a geri verir (diske gerçek yer ancak bununla açılır). Docker ve TÜM konteynerler birkaç dakika durur; önceden çalışanlar eski sırayla yeniden başlatılır ve hepsinin ayağa kalktığı doğrulanır. İçerideki hiçbir veri silinmez. Yalnızca Windows, yönetici izni gerekir.",
+            "Gives the space freed inside Docker back to Windows (this is what really frees disk space). Docker and ALL containers stop for a few minutes; the ones that were running are started again in the old order and checked. Nothing inside is deleted. Windows only, needs administrator rights.",
+        ),
         Task::RecycleBin => t(
             "Çöp Kutusu'nu KALICI boşaltır (önceki silinenler dahil). Bu adımdan sonra yukarıdaki adımlar geri alınamaz. Gerçek yer ancak bununla açılır.",
             "Empties the Recycle Bin FOR GOOD (including what you deleted earlier). After this step the steps above cannot be undone. Space is only really freed by this.",
@@ -113,7 +117,7 @@ fn docker_parts_ui(ui: &mut egui::Ui, parts: &mut Parts, d: Option<&DockerDetail
 
 /// Memory trimming exists on Windows only; elsewhere the choice is shown but disabled.
 fn task_available(task: Task) -> bool {
-    task != Task::Memory || cfg!(windows)
+    !matches!(task, Task::Memory | Task::DockerCompact) || cfg!(windows)
 }
 
 fn steps_bar(ui: &mut egui::Ui, step: OptStep) {
@@ -173,7 +177,7 @@ fn scope_step(app: &mut App, ui: &mut egui::Ui) {
                     app.opt.scope.set(task, on);
                 }
             });
-            ui.label(RichText::new(task_help(task)).color(if task == Task::RecycleBin { WARN } else { MUTED }).small());
+            ui.label(RichText::new(task_help(task)).color(if matches!(task, Task::RecycleBin | Task::DockerCompact) { WARN } else { MUTED }).small());
             if !available {
                 ui.label(RichText::new(t("Bu bilgisayarda yok: macOS belleği kendisi yönetir.", "Not available here: macOS manages memory itself.")).color(MUTED).small());
             }
@@ -270,6 +274,11 @@ fn found(an: &Analysis, task: Task, parts: Parts) -> (String, u64, bool) {
             (None, Some(DockerStatus::DaemonDown(_))) => (t("Docker çalışmıyor", "Docker is not running").into(), 0, false),
             _ => (t("build önbelleği bulunamadı", "no build cache found").into(), 0, false),
         },
+        Task::DockerCompact => match &an.compact {
+            Some(c) if c.blocker.is_none() => (tf!("Docker disk imajı {}; geri verilecek yer (tahmini)", "Docker disk image {}; space to give back (estimate)", human_bytes(c.disk_image)), c.estimate, true),
+            Some(c) => (c.blocker.clone().unwrap_or_default(), 0, false),
+            None => (String::new(), 0, false),
+        },
         Task::RecycleBin => match an.bin {
             Some(b) => (tf!("şu an {} öğe", "{} items right now", b.items), b.bytes, true),
             None => (t("okunamadı", "could not be read").into(), 0, false),
@@ -328,6 +337,20 @@ fn review_step(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             }
+            if actionable && on && task == Task::DockerCompact {
+                if let Some(c) = &an.compact {
+                    ui.label(RichText::new(tf!(
+                        "Docker ve şu {} konteyner birkaç dakika durur, sonra eski sırayla yeniden başlatılır: {}",
+                        "Docker and these {} containers stop for a few minutes, then are started again in the old order: {}",
+                        c.running.len(),
+                        c.running.join(", ")
+                    )).color(WARN).small());
+                    if !c.other_wsl.is_empty() {
+                        ui.label(RichText::new(tf!("Çalışan WSL dağıtımları da kapanır: {}", "These running WSL distributions stop too: {}", c.other_wsl.join(", "))).color(DANGER).small());
+                    }
+                    ui.label(RichText::new(t("Sırasında bu konteynerlere bağlı uygulamalar (veritabanı, API) erişilemez olur. Başlamayan konteyner olursa sonuç ekranı adıyla söyler.", "Apps that depend on these containers (databases, APIs) are unreachable meanwhile. If a container does not start, the result screen names it.")).color(MUTED).small());
+                }
+            }
             if actionable && matches!(task, Task::Cleanup | Task::Dupes) {
                 let sample: Vec<String> = match task {
                     Task::Cleanup => {
@@ -348,7 +371,7 @@ fn review_step(app: &mut App, ui: &mut egui::Ui) {
         if app.opt.scope.has(task) && (task != Task::Docker || app.opt.scope.docker_parts.any()) {
             any_task = true;
             // the Recycle Bin line below already counts what the bin holds
-            if matches!(task, Task::Cleanup | Task::Dupes | Task::Docker) {
+            if matches!(task, Task::Cleanup | Task::Dupes | Task::DockerCompact) {
                 chosen_bytes += bytes;
             }
         }
@@ -405,6 +428,11 @@ fn running_step(app: &mut App, ui: &mut egui::Ui) {
         let (d, tot) = (p.clean_done.load(Relaxed), p.clean_total.load(Relaxed));
         if tot > 0 && matches!(Task::ALL.get(cur as usize), Some(Task::Cleanup | Task::Dupes)) {
             ui.add(egui::ProgressBar::new(d as f32 / tot.max(1) as f32).text(format!("{d}/{tot}")).fill(ACCENT));
+        }
+        if let Ok(n) = p.note.lock() {
+            if !n.is_empty() {
+                ui.label(RichText::new(n.as_str()).color(WARN));
+            }
         }
         ui.label(RichText::new(tf!("Şimdiye dek açılan: {} · {} sn", "Freed so far: {} · {} s", human_bytes(p.freed.load(Relaxed)), app.opt.started.elapsed().as_secs())).color(MUTED));
         if ui.button(t("İptal (kalan adımlar atlanır)", "Cancel (remaining steps are skipped)")).clicked() {

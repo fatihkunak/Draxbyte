@@ -61,6 +61,10 @@ pub enum Cmd {
         /// `stopped` and `volumes` can lose data; they run only when named here.
         #[arg(long, value_delimiter = ',')]
         docker_parts: Vec<String>,
+        /// Also shrink Docker's disk image (Windows). Docker and every container stop for a few
+        /// minutes; the ones that were running are started again and checked.
+        #[arg(long)]
+        docker_compact: bool,
         /// Do not empty the Recycle Bin at the end
         #[arg(long)]
         keep_bin: bool,
@@ -210,9 +214,9 @@ fn run_scan(cfg: &Config, paths: Vec<PathBuf>) -> scanner::ScanOutput {
 pub fn run(cli: Cli, cfg: Config) -> Result<()> {
     match cli.cmd {
         None => unreachable!("GUI path is handled by main"),
-        Some(Cmd::Optimize { apply, skip_cleanup, skip_dupes, skip_docker, docker_parts, keep_bin, skip_memory, dupe_paths, dupe_min_mb }) => {
+        Some(Cmd::Optimize { apply, skip_cleanup, skip_dupes, skip_docker, docker_parts, docker_compact, keep_bin, skip_memory, dupe_paths, dupe_min_mb }) => {
             use draxbyte::core::optimize::{self as opt, OptProgress, Scope};
-            let mut scope = Scope { cleanup: !skip_cleanup, dupes: !skip_dupes, docker: !skip_docker, recycle_bin: !keep_bin, memory: !skip_memory, dupe_min_mb, ..Scope::default() };
+            let mut scope = Scope { cleanup: !skip_cleanup, dupes: !skip_dupes, docker: !skip_docker, recycle_bin: !keep_bin, memory: !skip_memory, docker_compact, dupe_min_mb, ..Scope::default() };
             if !dupe_paths.is_empty() {
                 scope.dupe_roots = dupe_paths;
             }
@@ -255,6 +259,16 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                 }
                 for v in d.volumes.iter().take(8) {
                     println!("  {} {:>10}  {}  {}", t("boşta birim", "unused volume"), v.size, v.name, v.info);
+                }
+                if let Some(c) = &an.compact {
+                    match &c.blocker {
+                        None => println!("{}", tf!(
+                            "  Disk imajını küçültme: {} imaj, tahmini geri verilecek yer {}; Docker ve {} konteyner durup geri başlatılacak",
+                            "  Shrinking the disk image: {} image, estimated {} given back; Docker and {} containers stop and start again",
+                            human_bytes(c.disk_image), human_bytes(c.estimate), c.running.len()
+                        )),
+                        Some(why) => println!("{}", tf!("  Disk imajını küçültme yapılamaz: {}", "  Cannot shrink the disk image: {}", why)),
+                    }
                 }
                 if let Some(img) = d.disk_image {
                     println!("{}", tf!("  Docker disk imajı: {} (temizlikle kendiliğinden küçülmez)", "  Docker disk image: {} (does not shrink by itself)", human_bytes(img)));

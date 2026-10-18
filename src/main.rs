@@ -4,6 +4,7 @@
 mod app;
 mod cli;
 mod map_dupes;
+mod optimize;
 mod panels;
 mod ui;
 mod wizard;

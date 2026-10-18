@@ -6,6 +6,7 @@ pub mod dupes;
 pub mod elevate;
 pub mod installer;
 pub mod memory;
+pub mod optimize;
 pub mod recycle;
 pub mod rules;
 pub mod safety;

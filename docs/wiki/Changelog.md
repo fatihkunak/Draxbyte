@@ -15,3 +15,5 @@
 - 2026-10-18 — Disk Haritası ([[DiskMap]]), Kopya Dosyalar ([[Duplicates]]), kurulum/kaldırma sihirbazı ([[Wizard]], Windows + macOS); `Draxbyte-Setup.exe` artık IExpress değil aynı programın imzalı kopyası. Dal `feat/wizard-dupes-map`; gerçek Mac'te CI ile doğrulanacak.
 - 2026-10-19 — v0.4.0 hazırlığı: erişilemeyen yolların nedeni ve çözümü ([[Scanner]]); Windows'ta açılışta yönetici izni varsayılan (Ayarlar'dan kapatılır, reddedilirse uygulama normal açılır).
 - 2026-10-19 — **v0.4.0 yayınlandı** (Disk Haritası, Kopya Dosyalar, kurulum/kaldırma sihirbazı, Windows'ta açılışta yönetici izni, erişilemeyen yollar için neden+çözüm; `feat/wizard-dupes-map` main'e fast-forward birleşti). Mac CI yeşil. PC kurulumu gerçek Setup sihirbazıyla 0.3.0→0.4.0 güncellendi (açık sürüm `.old`'a alındı).
+
+- 2026-10-19 — Tam Optimizasyon sihirbazı ([[Optimize]], commit'siz): kapsam onayı → salt okuma analiz → onay → uygulama; Docker parça parça (durmuş konteyner, build önbelleği, imajlar, ağlar, birimler; riskliler varsayılan kapalı), `draxbyte optimize`. Windows'ta gerçek Docker'da salt okuma doğrulandı; Mac CI henüz koşmadı.

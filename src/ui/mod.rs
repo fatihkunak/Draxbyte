@@ -4,6 +4,7 @@ pub mod about_view;
 pub mod apps_view;
 pub mod diskmap_view;
 pub mod dupes_view;
+pub mod optimize_view;
 pub mod result_view;
 pub mod scan_view;
 pub mod settings_view;
@@ -113,9 +114,10 @@ pub fn apply_theme(ctx: &egui::Context) {
     });
 }
 
-fn nav() -> [(View, &'static str); 11] {
+fn nav() -> [(View, &'static str); 12] {
     [
         (View::Home, t("Ana Sayfa", "Home")),
+        (View::Optimize, t("Tam Optimizasyon", "Full Optimization")),
         (View::Scan, t("Tarama", "Scan")),
         (View::Results, t("Sonuçlar", "Results")),
         (View::Clean, t("Temizlik", "Cleanup")),
@@ -148,6 +150,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
         )
         .show(ui, |ui| match app.view {
             View::Home => scan_view::home(app, ui),
+            View::Optimize => optimize_view::optimize(app, ui),
             View::Scan => scan_view::progress(app, ui),
             View::Results => result_view::results(app, ui),
             View::Clean => result_view::clean(app, ui),
@@ -172,7 +175,8 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
     for (view, label) in nav() {
         let selected = app.view == view;
         let busy = (view == View::Scan && app.scan.is_some())
-            || (view == View::Clean && app.clean_job.is_some());
+            || (view == View::Clean && app.clean_job.is_some())
+            || (view == View::Optimize && app.opt.busy());
         let text = if busy {
             format!("{label}  •")
         } else {

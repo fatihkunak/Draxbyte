@@ -45,6 +45,33 @@ pub enum Cmd {
     /// Clean what a scan finds. DRY-RUN unless --apply is given.
     /// Read-only Docker disk usage check (`docker system df`).
     Docker,
+    /// Full optimization: cleanup + duplicates + Docker cache + Recycle Bin + memory.
+    /// Only measures and prints unless --apply is given.
+    Optimize {
+        /// Really do it (files go to the Recycle Bin, then the bin is emptied unless --keep-bin)
+        #[arg(long)]
+        apply: bool,
+        #[arg(long)]
+        skip_cleanup: bool,
+        #[arg(long)]
+        skip_dupes: bool,
+        #[arg(long)]
+        skip_docker: bool,
+        /// Docker parts to clean, comma separated: build, dangling, networks (default), stopped, images, volumes.
+        /// `stopped` and `volumes` can lose data; they run only when named here.
+        #[arg(long, value_delimiter = ',')]
+        docker_parts: Vec<String>,
+        /// Do not empty the Recycle Bin at the end
+        #[arg(long)]
+        keep_bin: bool,
+        #[arg(long)]
+        skip_memory: bool,
+        /// Folders for the duplicate search (default: your home folder)
+        #[arg(long = "dupe-path")]
+        dupe_paths: Vec<PathBuf>,
+        #[arg(long, default_value_t = 10)]
+        dupe_min_mb: u64,
+    },
     /// Show the Recycle Bin / Trash size; `--empty` empties it for good.
     Recycle {
         #[arg(long)]
@@ -146,6 +173,11 @@ pub enum Cmd {
     },
 }
 
+/// Plain-text part name for the CLI report.
+pub fn optimize_title(t: draxbyte::core::optimize::Task) -> &'static str {
+    crate::optimize::task_title(t)
+}
+
 fn run_scan(cfg: &Config, paths: Vec<PathBuf>) -> scanner::ScanOutput {
     let opts = ScanOptions::from_config(cfg, (!paths.is_empty()).then_some(paths));
     eprintln!(
@@ -178,6 +210,67 @@ fn run_scan(cfg: &Config, paths: Vec<PathBuf>) -> scanner::ScanOutput {
 pub fn run(cli: Cli, cfg: Config) -> Result<()> {
     match cli.cmd {
         None => unreachable!("GUI path is handled by main"),
+        Some(Cmd::Optimize { apply, skip_cleanup, skip_dupes, skip_docker, docker_parts, keep_bin, skip_memory, dupe_paths, dupe_min_mb }) => {
+            use draxbyte::core::optimize::{self as opt, OptProgress, Scope};
+            let mut scope = Scope { cleanup: !skip_cleanup, dupes: !skip_dupes, docker: !skip_docker, recycle_bin: !keep_bin, memory: !skip_memory, dupe_min_mb, ..Scope::default() };
+            if !dupe_paths.is_empty() {
+                scope.dupe_roots = dupe_paths;
+            }
+            if !docker_parts.is_empty() {
+                use draxbyte::core::docker::{Part, Parts};
+                let mut parts = Parts::none();
+                for name in &docker_parts {
+                    let part = match name.trim() {
+                        "build" => Part::BuildCache,
+                        "dangling" => Part::DanglingImages,
+                        "networks" => Part::Networks,
+                        "stopped" => Part::StoppedContainers,
+                        "images" => Part::UnusedImages,
+                        "volumes" => Part::Volumes,
+                        other => bail!("{}", tf!("bilinmeyen Docker parçası: {}", "unknown Docker part: {}", other)),
+                    };
+                    parts.set(part, true);
+                }
+                scope.docker_parts = parts;
+            }
+            if !scope.any() {
+                bail!("{}", t("hiçbir işlem seçilmedi", "no task selected"));
+            }
+            eprintln!("{}", t("Analiz ediliyor (salt okuma)…", "Analyzing (read-only)…"));
+            let (cancel, progress) = (AtomicBool::new(false), OptProgress::default());
+            let an = opt::analyze(&cfg, &scope, &cancel, &progress);
+            println!("{}", tf!("Güvenli temizlik: {} öğe · {}", "Safe cleanup: {} items · {}", an.cleanup.len(), human_bytes(an.cleanup_bytes)));
+            println!("{}", tf!("Kopya dosyalar: {} dosya · {} ({} grup bulundu)", "Duplicates: {} files · {} ({} groups found)", an.dupe_delete.len(), human_bytes(an.dupe_bytes), an.dupe_groups.len()));
+            if let Some(b) = an.bin {
+                println!("{}", tf!("Çöp Kutusu: {} öğe · {}", "Recycle Bin: {} items · {}", b.items, human_bytes(b.bytes)));
+            }
+            if let Some(d) = &an.docker {
+                println!("{}", tf!(
+                    "Docker: {} durmuş konteyner · {} etiketsiz imaj · {} boşta birim · seçili parçalardan tahmini {}",
+                    "Docker: {} stopped containers · {} untagged images · {} unused volumes · estimated {} from the chosen parts",
+                    d.stopped.len(), d.dangling_images.len(), d.volumes.len(), human_bytes(opt::docker_estimate(d, scope.docker_parts))
+                ));
+                for r in &d.rows {
+                    println!("  {:<14} {:>4} ({} {})  {:>10}  {} {}", r.kind, r.total, r.active, t("aktif", "active"), r.size, t("geri kazanılabilir", "reclaimable"), r.reclaimable);
+                }
+                if let Some(img) = d.disk_image {
+                    println!("{}", tf!("  Docker disk imajı: {} (temizlikle kendiliğinden küçülmez)", "  Docker disk image: {} (does not shrink by itself)", human_bytes(img)));
+                }
+            }
+            if an.scan_errors > 0 {
+                println!("{}", tf!("{} yol okunamadı", "{} paths could not be read", an.scan_errors));
+            }
+            if !apply {
+                println!("{}", t("KURU ÇALIŞTIRMA: hiçbir şey değişmedi. Uygulamak için --apply ekle.", "DRY RUN: nothing was changed. Add --apply to run it."));
+                return Ok(());
+            }
+            let rep = opt::apply(&an, &scope, false, &cancel, &progress);
+            for s in &rep.steps {
+                println!("{}: {} · {} {}", optimize_title(s.task), match &s.status { opt::StepStatus::Done => "OK".to_string(), opt::StepStatus::Skipped(w) => format!("skipped ({w})"), opt::StepStatus::Failed(e) => format!("FAILED ({e})") }, human_bytes(s.freed), s.detail);
+            }
+            println!("{}", tf!("Toplam kaldırılan: {} · boş yer {} → {}", "Total removed: {} · free space {} → {}", human_bytes(rep.freed()), human_bytes(rep.free_before), human_bytes(rep.free_after)));
+            Ok(())
+        }
         Some(Cmd::Scan { paths, limit, save, show_errors }) => {
             let out = run_scan(&cfg, paths);
             print_scan_errors(&out.errors, show_errors);

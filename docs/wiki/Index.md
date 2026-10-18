@@ -16,6 +16,7 @@
 - [[Programs]] — kurulu programlar, son kullanım tahmini, kaldırıcı + artık temizliği, zorla kaldırma (Edge dahil), macOS .app
 - [[DiskMap]] — boyut ağacı + treemap; alan neyin altında (salt okunur)
 - [[Duplicates]] — birebir aynı dosyalar (boyut → kısmi hash → SHA-256), her gruptan en az bir kopya kalır
+- [[Optimize]] — Tam Optimizasyon sihirbazı: kapsam → analiz → onay → uygulama; temizlik, kopyalar, Docker parça parça, Çöp Kutusu, bellek
 - [[Wizard]] — kurulum/kaldırma sihirbazı (Setup.exe = aynı program; Windows + macOS)
 - [[Memory]] — bellek, program kapatma (korumalı liste), "belleği boşalt", başlangıç yöneticisi
 

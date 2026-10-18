@@ -21,6 +21,7 @@ use std::time::Instant;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum View {
     Home,
+    Optimize,
     Scan,
     Results,
     Clean,
@@ -143,6 +144,7 @@ pub struct App {
     pub model_filter: String,
 
     pub bin: BinCard,
+    pub opt: crate::optimize::OptState,
     pub map: crate::map_dupes::DiskMapState,
     pub dupes: crate::map_dupes::DupesState,
     pub apps: crate::panels::AppsState,
@@ -163,7 +165,7 @@ pub struct App {
     pub logo: egui::TextureHandle,
 }
 
-fn detect_disk() -> Option<DiskInfo> {
+pub fn detect_disk() -> Option<DiskInfo> {
     let home = draxbyte::config::home_dir();
     let disks = sysinfo::Disks::new_with_refreshed_list();
     disks
@@ -225,6 +227,7 @@ impl App {
             view: match std::env::var("DRAXBYTE_VIEW").unwrap_or_default().as_str() {
                 "programs" => View::Programs,
                 "system" => View::System,
+                "optimize" => View::Optimize,
                 "map" => View::DiskMap,
                 "dupes" => View::Duplicates,
                 "settings" => View::Settings,
@@ -258,6 +261,7 @@ impl App {
             test_status: None,
             model_filter: String::new(),
             bin: BinCard::default(),
+            opt: Default::default(),
             map: Default::default(),
             dupes: Default::default(),
             apps: Default::default(),
@@ -274,6 +278,13 @@ impl App {
             docker_prune_job: None,
             toast: None,
         };
+        // DRAXBYTE_OPT_DEMO=1: Docker + Recycle Bin analysis starts at once (screenshots, demos)
+        if std::env::var("DRAXBYTE_OPT_DEMO").is_ok() {
+            app.opt.scope.cleanup = false;
+            app.opt.scope.dupes = false;
+            app.opt.scope.memory = false;
+            app.opt_analyze(&cc.egui_ctx);
+        }
         app.rebuild_ai();
         if app.cfg.ui.check_updates {
             app.start_update_check(&cc.egui_ctx);

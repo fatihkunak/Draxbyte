@@ -48,3 +48,8 @@
 ## Erişim (10-19)
 - **Windows'ta açılışta yönetici izni varsayılan** (`ui.always_admin = true`; kullanıcı kararı: "benim bilgisayarımda erişemediğim bölüm olmamalı"). Çalışma anında yeniden başlatma (`relaunch_elevated`), `requireAdministrator` manifesti **değil**: manifest her `cargo test`'i, terminaldeki her `draxbyte scan`'i ve (kullanıcıya özel) kurulum sihirbazını da UAC'ye takardı. UAC reddedilirse uygulama normal açılır; sihirbazlar ve CLI hiç yükseltmez; `DRAXBYTE_NO_ELEVATE=1` otomasyon içindir. Bilinen sınır: standart kullanıcı başka bir yönetici hesabının parolasıyla yükseltirse süreç o hesabın profilinde çalışır (bu bilgisayarda hesap yönetici, aynı profil).
 - **"Erişilemeyen" artık bir sayı değil bir tanı.** Neden (izin / kullanımda / diğer), örnek yollar ve tek tıkla çözüm. Kaybolan dosya hata değildir. Mac'te karşılığı Tam Disk Erişimi yönlendirmesi (yönetici kavramı yok). Korumalı sistem yolları (Windows klasörü vb.) bilerek taranmaz ve "erişilemeyen" sayılmaz; Disk Haritası onları gösterir.
+
+## Tam Optimizasyon (2026-10-19)
+- Seçilen: mevcut araçları tek plana bağlayan sihirbaz; her silme `cleaner::clean` üzerinden (kırmızı + `pre_delete_check` atlanamaz). Onay kutusu olmadan başlatılamaz.
+- Reddedilen: başlangıç programlarını/programları otomatik kapatma-kaldırma (geri dönüşü zor, karar kullanıcının); `docker system prune` (birimleri ve konteynerleri toplu siler); Docker vhdx sıkıştırma (WSL/Docker'ı kapatır, 7/24 konteynerleri öldürür): yalnız boyutu ve elle yolu gösterilir.
+- Docker riskli parçalar (durmuş konteyner, birim) varsayılan KAPALI; listeler onay ekranında.

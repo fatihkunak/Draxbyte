@@ -1,5 +1,8 @@
 ﻿# Changelog
 
+## Unreleased
+- New: **Full Optimization wizard** (scope → read-only analysis → approval → run → result). Safe cleanup (green items only), duplicates (oldest copy stays), Docker piece by piece (build cache, untagged images, networks by default; stopped containers, unused images and volumes only when ticked, with the list shown first), Recycle Bin, memory (Windows). Nothing changes before the approval; files go to the Recycle Bin first. `draxbyte optimize` (dry run unless `--apply`)
+
 ## 0.4.0 — 2026-10-19
 - New: **Disk Map** — a treemap of what takes the space (tile area = size). Click a folder to look inside, hover for details, jump to the file manager. Read-only. `draxbyte map` prints the same as text
 - New: **Duplicate Files** — finds files with exactly the same content (size → first/last 64 KB → full SHA-256). Every group always keeps at least one copy; deletion goes through the same re-checking cleaner (Recycle Bin by default). Developer and build folders (`node_modules`, `.git`, `intermediates`, `.cxx`…) are skipped by default. `draxbyte dupes` (dry run unless `--apply`)

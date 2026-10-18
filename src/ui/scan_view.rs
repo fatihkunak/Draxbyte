@@ -42,6 +42,8 @@ pub fn home(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(14.0);
             quick_actions(app, ui);
             ui.add_space(14.0);
+            optimize_card(app, ui);
+            ui.add_space(14.0);
             ui.columns(2, |cols| {
                 top_files(app, &mut cols[0]);
                 distribution_card(app, &mut cols[1]);
@@ -233,6 +235,29 @@ fn hero(app: &mut App, ui: &mut egui::Ui) {
                 });
             });
         });
+        });
+    });
+}
+
+/// Entry to the Full Optimization wizard.
+fn optimize_card(app: &mut App, ui: &mut egui::Ui) {
+    card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal_wrapped(|ui| {
+            ui.vertical(|ui| {
+                ui.label(RichText::new(t("Tam Optimizasyon", "Full Optimization")).font(super::bold(16.0)));
+                ui.label(
+                    RichText::new(t(
+                        "Temizlik, kopya dosyalar, Çöp Kutusu, Docker ve bellek tek akışta. Kapsamı sen seçersin, onayından önce hiçbir şey silinmez.",
+                        "Cleanup, duplicates, Recycle Bin, Docker and memory in one flow. You pick the scope; nothing is deleted before you approve.",
+                    ))
+                    .color(MUTED)
+                    .small(),
+                );
+            });
+            if ui.add(primary_button(t("Sihirbazı aç", "Open the wizard"))).clicked() {
+                app.view = View::Optimize;
+            }
         });
     });
 }

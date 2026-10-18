@@ -3,7 +3,8 @@
 #   scripts/macos/smoke.sh path/to/draxbyte
 set -euo pipefail
 BIN="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-H="$(mktemp -d)/home"
+# Outside the system temp dir (which the rules treat as a cache location), like a real home.
+H="$(mktemp -d "$HOME/smoke.XXXXXX")/home"
 mkdir -p "$H"
 export HOME="$H" DRAXBYTE_HOME="$H/.draxbyte"
 
@@ -24,7 +25,7 @@ echo "$OUT"
 fail=0
 want()  { echo "$OUT" | grep -q "$1" || { echo "MISSING (should be offered): $1"; fail=1; }; }
 avoid() { if echo "$OUT" | grep -q "$1"; then echo "LEAK (must not be offered): $1"; fail=1; fi; }
-want old.cache.bin; want oldinstaller.iso; want ordinarybig.bin
+want Library/Caches; want oldinstaller.iso; want ordinarybig.bin
 avoid appbig.bin; avoid clouddoc.bin; avoid dropboxfile.bin; avoid photo.bin; avoid mailbox.bin
 
 # /tmp and /var/tmp are symlinks on macOS; scanning them must not crash.

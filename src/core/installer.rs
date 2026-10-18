@@ -343,7 +343,8 @@ mod mac_imp {
             return Ok(());
         }
         let comps = comps_lc(dir);
-        if comps.len() < 3 || comps_lc(&home) == comps || crate::core::safety::is_protected(dir) {
+        let personal = ["Documents", "Desktop", "Downloads", "Pictures", "Movies", "Music"].iter().any(|d| comps_lc(&home.join(d)) == comps);
+        if comps.len() < 3 || comps_lc(&home) == comps || personal || crate::core::safety::is_protected(dir) {
             return Err(t("Bu klasöre kurulamaz; /Applications ya da ~/Applications seç.", "Cannot install there; pick /Applications or ~/Applications.").to_string());
         }
         Ok(())

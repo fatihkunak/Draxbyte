@@ -16,6 +16,15 @@ pub struct Config {
     pub ai: AiConfig,
     pub cleanup: CleanupConfig,
     pub ui: UiConfig,
+    pub memory: MemoryConfig,
+}
+
+/// Memory screen settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct MemoryConfig {
+    /// Program names (e.g. `my-service.exe`) that can never be closed from Draxbyte.
+    pub protected: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

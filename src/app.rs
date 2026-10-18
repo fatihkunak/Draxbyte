@@ -24,6 +24,8 @@ pub enum View {
     Scan,
     Results,
     Clean,
+    Programs,
+    System,
     Cache,
     Settings,
     About,
@@ -137,6 +139,8 @@ pub struct App {
     pub model_filter: String,
 
     pub bin: BinCard,
+    pub apps: crate::panels::AppsState,
+    pub sys: crate::panels::SysState,
     pub docker: Option<DockerStatus>,
     pub docker_job: Option<Receiver<DockerStatus>>,
     pub update: Option<UpdateState>,
@@ -211,7 +215,13 @@ impl App {
             cfg_path,
             db,
             rt,
-            view: View::Home,
+            // DRAXBYTE_VIEW=programs|system|... opens that screen first (screenshots, demos).
+            view: match std::env::var("DRAXBYTE_VIEW").unwrap_or_default().as_str() {
+                "programs" => View::Programs,
+                "system" => View::System,
+                "settings" => View::Settings,
+                _ => View::Home,
+            },
             disk: detect_disk(),
             scan_paths_text,
             last,
@@ -239,6 +249,8 @@ impl App {
             test_status: None,
             model_filter: String::new(),
             bin: BinCard::default(),
+            apps: Default::default(),
+            sys: Default::default(),
             docker: None,
             docker_job: None,
             update: None,
@@ -604,6 +616,7 @@ impl App {
     // ---- polling ----------------------------------------------------------
 
     pub fn poll_jobs(&mut self) {
+        self.panels_poll();
         if let Some(job) = &self.scan {
             if let Ok(out) = job.rx.try_recv() {
                 self.scan = None;

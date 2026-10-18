@@ -106,6 +106,16 @@ pub fn disk_map(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
 
+    if app.map.errors > 0 {
+        let elevated = draxbyte::core::elevate::is_elevated();
+        card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(tf!("{} klasör okunamadı; boyutları haritada eksik olabilir.", "{} folders could not be read; their sizes may be missing from the map.", app.map.errors)).color(WARN));
+            super::scan_view::access_buttons(ui, elevated);
+        });
+        ui.add_space(6.0);
+    }
+
     // ---- breadcrumb
     let mut jump: Option<usize> = None;
     {
@@ -212,7 +222,9 @@ pub fn disk_map(app: &mut App, ui: &mut egui::Ui) {
                 let (chip, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
                 ui.painter().rect_filled(chip, 3.0, tile_color(c, i));
                 let pct = if cur.size > 0 { c.size as f32 / cur.size as f32 } else { 0.0 };
-                ui.add_sized([210.0, 18.0], egui::Label::new(c.name.as_str()).truncate());
+                ui.allocate_ui_with_layout(egui::vec2(210.0, 18.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(c.name.as_str()).truncate());
+                });
                 ui.add_sized([80.0, 18.0], egui::Label::new(human_bytes(c.size)));
                 ui.add_sized([56.0, 18.0], egui::Label::new(RichText::new(format!("%{:.1}", pct * 100.0)).color(MUTED)));
                 if c.is_dir && !c.other && !c.children.is_empty() && ui.small_button(t("Aç", "Open")).clicked() {

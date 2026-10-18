@@ -31,13 +31,15 @@ pub struct DiskMapState {
     pub path: Vec<usize>,
     pub job: Option<MapJob>,
     pub msg: Option<String>,
+    /// Folders the last map could not read.
+    pub errors: u64,
 }
 
 impl Default for DiskMapState {
     fn default() -> Self {
         // DRAXBYTE_MAP_ROOT=<path>: start with that folder in the box (screenshots, demos)
         let root_text = std::env::var("DRAXBYTE_MAP_ROOT").unwrap_or_else(|_| "~".into());
-        Self { root_text, tree: None, path: Vec::new(), job: None, msg: None }
+        Self { root_text, tree: None, path: Vec::new(), job: None, msg: None, errors: 0 }
     }
 }
 
@@ -166,6 +168,7 @@ impl App {
             return;
         };
         self.map.msg = None;
+        self.map.errors = 0;
         self.map.tree = None;
         self.map.path.clear();
         let (tx, rx) = channel();
@@ -237,6 +240,7 @@ impl App {
         if let Some(job) = &self.map.job {
             if let Ok(tree) = job.rx.try_recv() {
                 let cancelled = job.cancel.load(std::sync::atomic::Ordering::Relaxed);
+                self.map.errors = job.progress.errors.load(std::sync::atomic::Ordering::Relaxed);
                 self.map.job = None;
                 if cancelled {
                     self.map.msg = Some(t("İptal edildi", "Cancelled").to_string());

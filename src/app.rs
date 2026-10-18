@@ -113,6 +113,8 @@ pub struct App {
     pub scan_paths_text: String,
 
     pub last: Option<ScanSummary>,
+    /// What the last scan could not read (and why), shown with the way to fix it.
+    pub last_errors: Option<draxbyte::core::scanner::ScanErrors>,
     pub scan: Option<ScanJob>,
     pub rows: Vec<Row>,
     pub visible: Vec<usize>,
@@ -231,6 +233,7 @@ impl App {
             disk: detect_disk(),
             scan_paths_text,
             last,
+            last_errors: None,
             scan: None,
             rows,
             visible: Vec::new(),
@@ -749,6 +752,7 @@ impl App {
     }
 
     fn finish_scan(&mut self, out: ScanOutput) {
+        self.last_errors = Some(out.errors).filter(|e| e.total() > 0);
         let mut summary = out.summary;
         if !out.cancelled {
             if let Some(db) = &mut self.db {

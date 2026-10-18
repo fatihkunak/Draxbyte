@@ -38,6 +38,9 @@ pub enum Cmd {
         /// Store the scan so the GUI shows it as the last scan
         #[arg(long)]
         save: bool,
+        /// List the paths that could not be read, with the reason
+        #[arg(long)]
+        show_errors: bool,
     },
     /// Clean what a scan finds. DRY-RUN unless --apply is given.
     /// Read-only Docker disk usage check (`docker system df`).
@@ -175,8 +178,9 @@ fn run_scan(cfg: &Config, paths: Vec<PathBuf>) -> scanner::ScanOutput {
 pub fn run(cli: Cli, cfg: Config) -> Result<()> {
     match cli.cmd {
         None => unreachable!("GUI path is handled by main"),
-        Some(Cmd::Scan { paths, limit, save }) => {
+        Some(Cmd::Scan { paths, limit, save, show_errors }) => {
             let out = run_scan(&cfg, paths);
+            print_scan_errors(&out.errors, show_errors);
             if save {
                 let mut db =
                     draxbyte::db::Db::open(&draxbyte::config::data_dir().join("draxbyte.db"))?;
@@ -597,4 +601,44 @@ fn map_cmd(path: Option<PathBuf>, depth: usize, limit: usize) -> Result<()> {
     println!("{} · {}", tree.path.display(), tf!("{} · {} dosya", "{} · {} files", human_bytes(tree.size), tree.files));
     print(&tree, 0, depth.max(1), limit, tree.size);
     Ok(())
+}
+
+/// A scan's unreadable paths: a one-line summary with the way out, and the examples on request.
+fn print_scan_errors(e: &draxbyte::core::scanner::ScanErrors, show: bool) {
+    use draxbyte::core::scanner::ErrKind;
+    if e.total() == 0 {
+        return;
+    }
+    eprintln!(
+        "{}",
+        tf!(
+            "{} yol okunamadı: {} izin yok, {} başka program kullanıyor, {} diğer.",
+            "{} paths could not be read: {} access denied, {} in use by another program, {} other.",
+            e.total(),
+            e.permission,
+            e.in_use,
+            e.other
+        )
+    );
+    if e.permission > 0 {
+        let how = if cfg!(windows) {
+            t("Hepsini görmek için Draxbyte'ı yönetici olarak çalıştır.", "Run Draxbyte as administrator to see all of them.")
+        } else {
+            t("Hepsini görmek için Draxbyte'a Tam Disk Erişimi ver (Sistem Ayarları → Gizlilik ve Güvenlik).", "Give Draxbyte Full Disk Access (System Settings → Privacy & Security) to see all of them.")
+        };
+        eprintln!("{how}");
+    }
+    if show {
+        for s in &e.samples {
+            let kind = match s.kind {
+                ErrKind::Permission => t("izin yok", "denied"),
+                ErrKind::InUse => t("kullanımda", "in use"),
+                ErrKind::Other => t("diğer", "other"),
+            };
+            eprintln!("  [{kind}] {} — {}", s.path.display(), s.message);
+        }
+        if (e.samples.len() as u64) < e.total() {
+            eprintln!("{}", tf!("  … ilk {} örnek gösterildi", "  … the first {} examples are shown", e.samples.len()));
+        }
+    }
 }

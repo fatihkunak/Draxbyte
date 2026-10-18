@@ -87,6 +87,27 @@ pub fn settings(app: &mut App, ui: &mut egui::Ui) {
                     });
             });
             ui.add_space(8.0);
+            if cfg!(windows) {
+                card(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.checkbox(
+                        &mut app.cfg_draft.ui.always_admin,
+                        t(
+                            "Açılışta yönetici izni iste (bir UAC onayı; hiçbir klasör erişilemez kalmaz) — varsayılan açık",
+                            "Ask for administrator rights at start (one UAC prompt; no folder stays out of reach) — on by default",
+                        ),
+                    );
+                    ui.label(
+                        RichText::new(t(
+                            "Onayı reddedersen uygulama yine açılır; tarama bittiğinde erişilemeyen yer kalırsa tek tıkla yönetici olarak yeniden açabilirsin.",
+                            "If you decline the prompt the app still opens; if a scan could not read something you can restart as administrator with one click.",
+                        ))
+                        .color(MUTED)
+                        .small(),
+                    );
+                });
+                ui.add_space(8.0);
+            }
             card(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.checkbox(

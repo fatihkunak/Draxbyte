@@ -716,3 +716,70 @@ fn docker_card(app: &mut App, ui: &mut egui::Ui) {
         }
     });
 }
+
+/// After a scan: what could not be read, why, and the one-click way to fix it (restart as
+/// administrator on Windows, Full Disk Access on macOS). Nothing is left as a bare number.
+pub fn errors_banner(app: &mut App, ui: &mut egui::Ui) {
+    use draxbyte::core::scanner::ErrKind;
+    let Some(e) = app.last_errors.clone() else { return };
+    let elevated = draxbyte::core::elevate::is_elevated();
+    card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.label(
+            RichText::new(tf!(
+                "{} yol okunamadı: {} izin yok · {} başka program kullanıyor · {} diğer",
+                "{} paths could not be read: {} access denied · {} in use by another program · {} other",
+                e.total(),
+                e.permission,
+                e.in_use,
+                e.other
+            ))
+            .color(WARN),
+        );
+        if e.permission > 0 {
+            access_buttons(ui, elevated);
+        }
+        egui::CollapsingHeader::new(RichText::new(t("Hangi yollar?", "Which paths?")).small()).id_salt("scan-errors").show(ui, |ui| {
+            egui::ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
+                for s in &e.samples {
+                    let kind = match s.kind {
+                        ErrKind::Permission => t("izin yok", "denied"),
+                        ErrKind::InUse => t("kullanımda", "in use"),
+                        ErrKind::Other => t("diğer", "other"),
+                    };
+                    ui.add(egui::Label::new(RichText::new(format!("[{kind}] {}", s.path.display())).small().color(MUTED)).truncate());
+                }
+                if (e.samples.len() as u64) < e.total() {
+                    ui.label(RichText::new(tf!("… ilk {} örnek", "… the first {} examples", e.samples.len())).small().color(MUTED));
+                }
+            });
+        });
+    });
+    ui.add_space(8.0);
+}
+
+/// The way out of "access denied": restart as administrator (Windows) or grant Full Disk Access
+/// (macOS). Used wherever something could not be read.
+pub fn access_buttons(ui: &mut egui::Ui, elevated: bool) {
+    ui.horizontal_wrapped(|ui| {
+        if cfg!(windows) && !elevated {
+            ui.label(RichText::new(t("Bunlar yönetici izni ister.", "These need administrator rights.")).color(MUTED));
+            if ui.add(super::widgets::primary_button(t("Yönetici olarak yeniden aç", "Restart as administrator"))).clicked() {
+                match draxbyte::core::elevate::relaunch_elevated() {
+                    Ok(()) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
+                    Err(m) => {
+                        ui.label(RichText::new(tf!("Yönetici izni alınamadı: {m}", "Could not get administrator rights: {m}")).color(WARN));
+                    }
+                }
+            }
+        } else if cfg!(target_os = "macos") {
+            ui.label(RichText::new(t("macOS bunlar için Tam Disk Erişimi ister.", "macOS needs Full Disk Access for these.")).color(MUTED));
+            if ui.add(super::widgets::primary_button(t("Tam Disk Erişimi ayarlarını aç", "Open the Full Disk Access settings"))).clicked() {
+                super::widgets::open_full_disk_access();
+            }
+            ui.label(RichText::new(t("Draxbyte'ı listeye ekleyip uygulamayı yeniden aç.", "Add Draxbyte to the list, then reopen the app.")).color(MUTED).small());
+        } else {
+            ui.label(RichText::new(t("Yönetici olarak açık olsan da bu yollar sistem tarafından kilitli ya da korumalı.", "Even as administrator the system keeps these locked or protected.")).color(MUTED));
+        }
+    });
+}

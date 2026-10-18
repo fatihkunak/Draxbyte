@@ -47,6 +47,7 @@ Deleted items go to the Recycle Bin by default and can be restored.
 - 🧠 **Memory & Startup** — see what uses memory, close what you pick (with a protected list), switch startup programs off/on; "Free memory" with an honest warning that its effect is temporary
 - 💽 **Complete scan** — every internal drive and the system folders (`Windows\Temp`, `Package Cache`, `Windows.old`…) plus the Recycle Bin
 - 🍎 **macOS** — `.app` bundles with their `~/Library` files; apps on the sealed system volume (Safari, Mail…) cannot be deleted by anything, so only their caches are cleaned
+- 🔓 **Nothing out of reach** — on Windows it asks for administrator rights at start (decline and it still opens; Settings turns it off); a scan lists every path it could not read **with the reason** (access denied / in use) and offers the one-click fix (Full Disk Access on macOS)
 - 🗺️ **Disk Map** — what is taking the space? Coloured tiles sized by use (a treemap); click a folder to look inside; read-only
 - 👯 **Duplicate Files** — files with exactly the same content (size → first/last 64 KB → full SHA-256); at least one copy of every group always stays; deletion goes to the Recycle Bin
 - 🧙 **Install and uninstall wizard** — `Draxbyte-Setup.exe` installs step by step with the same theme and logo (Windows) / opened from the disk image it installs into Applications (macOS); uninstall is a wizard too and removes only its own files

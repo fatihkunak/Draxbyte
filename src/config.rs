@@ -72,6 +72,10 @@ pub struct UiConfig {
     pub language: String,
     /// Ask GitHub for a newer release at start-up. Off by default: no network request otherwise.
     pub check_updates: bool,
+    /// Windows: ask for administrator rights when the app starts (one UAC prompt), so no folder is
+    /// out of reach for scans and removals. On by default; declining the prompt just starts the
+    /// app without them.
+    pub always_admin: bool,
 }
 
 impl Default for UiConfig {
@@ -79,6 +83,7 @@ impl Default for UiConfig {
         Self {
             language: "auto".into(),
             check_updates: false,
+            always_admin: true,
         }
     }
 }

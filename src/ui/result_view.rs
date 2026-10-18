@@ -28,6 +28,7 @@ pub fn results(app: &mut App, ui: &mut egui::Ui) {
             "Tick the boxes; nothing is deleted before the confirmation screen.",
         ),
     );
+    super::scan_view::errors_banner(app, ui);
 
     ui.horizontal_wrapped(|ui| {
         for (label, cat) in [
@@ -532,6 +533,24 @@ pub fn clean(app: &mut App, ui: &mut egui::Ui) {
             );
         }
     });
+    if failed > 0 && !rep.dry_run {
+        // Not a bare number: say what to do. Most failures are "access denied" (needs admin /
+        // Full Disk Access) or "in use" (close the program).
+        let elevated = draxbyte::core::elevate::is_elevated();
+        super::widgets::card(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(
+                RichText::new(tf!(
+                    "{failed} öğe silinemedi: izin yok ya da başka bir program kullanıyor. Ayrıntı aşağıdaki listede.",
+                    "{failed} items could not be removed: access denied, or in use by another program. Details are in the list below."
+                ))
+                .color(WARN),
+            );
+            if !elevated || cfg!(target_os = "macos") {
+                super::scan_view::access_buttons(ui, elevated);
+            }
+        });
+    }
     ui.add_space(6.0);
 
     let can_undo = trashed > 0;

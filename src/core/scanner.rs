@@ -48,20 +48,96 @@ pub fn default_roots(cfg: &Config) -> Vec<PathBuf> {
     syslocs::dedupe_roots(v)
 }
 
+/// Why a path could not be read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrKind {
+    /// Access denied: needs administrator rights (Windows) or Full Disk Access (macOS).
+    Permission,
+    /// Open exclusively by another program (page file, a running database…).
+    InUse,
+    Other,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScanError {
+    pub path: PathBuf,
+    pub kind: ErrKind,
+    pub message: String,
+}
+
+/// `None` = not an error worth reporting: the file vanished between listing and reading
+/// (temp files, caches), which says nothing about access.
+pub fn classify_io_error(e: &std::io::Error) -> Option<ErrKind> {
+    use std::io::ErrorKind::*;
+    match e.kind() {
+        NotFound => None,
+        PermissionDenied => Some(ErrKind::Permission),
+        // Raw codes are Windows' own (5 is EIO on Unix), so they are only read there.
+        _ if cfg!(windows) => match e.raw_os_error() {
+            Some(5) => Some(ErrKind::Permission),        // ERROR_ACCESS_DENIED
+            Some(32) | Some(33) => Some(ErrKind::InUse), // sharing / lock violation
+            Some(2) | Some(3) => None,                   // file / path not found
+            _ => Some(ErrKind::Other),
+        },
+        _ => Some(ErrKind::Other),
+    }
+}
+
+/// How many unreadable paths are kept as examples.
+const MAX_ERROR_SAMPLES: usize = 400;
+
 /// Live counters the UI polls while the scan runs.
 #[derive(Default)]
 pub struct Progress {
     pub files: AtomicU64,
     pub bytes: AtomicU64,
     pub found: AtomicU64,
+    /// Paths that could not be read (see `ScanErrors` for why). Vanished files are not counted.
     pub errors: AtomicU64,
+    pub err_permission: AtomicU64,
+    pub err_in_use: AtomicU64,
+    pub error_samples: Mutex<Vec<ScanError>>,
     pub current: Mutex<String>,
+}
+
+impl Progress {
+    /// Records an unreadable path (and keeps a few examples for the report).
+    pub fn record_error(&self, path: &Path, e: &std::io::Error) {
+        let Some(kind) = classify_io_error(e) else { return };
+        self.errors.fetch_add(1, Relaxed);
+        match kind {
+            ErrKind::Permission => self.err_permission.fetch_add(1, Relaxed),
+            ErrKind::InUse => self.err_in_use.fetch_add(1, Relaxed),
+            ErrKind::Other => 0,
+        };
+        if let Ok(mut v) = self.error_samples.lock() {
+            if v.len() < MAX_ERROR_SAMPLES {
+                v.push(ScanError { path: path.to_path_buf(), kind, message: e.to_string() });
+            }
+        }
+    }
+}
+
+/// What a scan could not read, so "inaccessible" is never a bare number.
+#[derive(Debug, Clone, Default)]
+pub struct ScanErrors {
+    pub permission: u64,
+    pub in_use: u64,
+    pub other: u64,
+    pub samples: Vec<ScanError>,
+}
+
+impl ScanErrors {
+    pub fn total(&self) -> u64 {
+        self.permission + self.in_use + self.other
+    }
 }
 
 pub struct ScanOutput {
     pub items: Vec<ScanItem>,
     pub summary: ScanSummary,
     pub cancelled: bool,
+    pub errors: ScanErrors,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -82,22 +158,40 @@ pub fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
 
 /// Size and newest mtime of a folder. Symlinks are neither followed nor counted.
 pub fn dir_stats(path: &Path, cancel: &AtomicBool) -> DirStats {
+    dir_stats_report(path, cancel, &mut |_, _| {})
+}
+
+/// Like `dir_stats`, but tells `on_err` about every path that could not be read, so a folder
+/// whose size is under-counted because part of it is unreadable is not silently wrong.
+pub fn dir_stats_report(path: &Path, cancel: &AtomicBool, on_err: &mut dyn FnMut(&Path, &std::io::Error)) -> DirStats {
     let mut st = DirStats::default();
-    for entry in WalkDir::new(path)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in WalkDir::new(path).follow_links(false) {
         if cancel.load(Relaxed) {
             break;
         }
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                if let (Some(p), Some(io)) = (e.path(), e.io_error()) {
+                    on_err(p, io);
+                }
+                continue;
+            }
+        };
         if entry.file_type().is_symlink() || !entry.file_type().is_file() {
             continue;
         }
-        if let Ok(meta) = entry.metadata() {
-            st.size += meta.len();
-            st.files += 1;
-            st.newest = st.newest.max(mtime_secs(&meta));
+        match entry.metadata() {
+            Ok(meta) => {
+                st.size += meta.len();
+                st.files += 1;
+                st.newest = st.newest.max(mtime_secs(&meta));
+            }
+            Err(e) => {
+                if let Some(io) = e.io_error() {
+                    on_err(entry.path(), io);
+                }
+            }
         }
     }
     st
@@ -166,7 +260,7 @@ impl Ctx<'_> {
         if !self.engine.wants_aggregate(path) {
             return DirAction::Descend;
         }
-        let st = dir_stats(path, self.cancel);
+        let st = dir_stats_report(path, self.cancel, &mut |p, e| self.progress.record_error(p, e));
         self.progress.files.fetch_add(st.files, Relaxed);
         self.progress.bytes.fetch_add(st.size, Relaxed);
         if st.size < self.min_size {
@@ -188,9 +282,14 @@ impl Ctx<'_> {
     }
 
     fn visit_file(&self, entry: &walkdir::DirEntry, out: &mut Vec<ScanItem>) {
-        let Ok(meta) = entry.metadata() else {
-            self.progress.errors.fetch_add(1, Relaxed);
-            return;
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                if let Some(io) = e.io_error() {
+                    self.progress.record_error(entry.path(), io);
+                }
+                return;
+            }
         };
         let size = meta.len();
         let n = self.progress.files.fetch_add(1, Relaxed);
@@ -217,8 +316,10 @@ impl Ctx<'_> {
             }
             let entry = match next {
                 Ok(e) => e,
-                Err(_) => {
-                    self.progress.errors.fetch_add(1, Relaxed);
+                Err(e) => {
+                    if let (Some(p), Some(io)) = (e.path(), e.io_error()) {
+                        self.progress.record_error(p, io);
+                    }
                     continue;
                 }
             };
@@ -265,8 +366,8 @@ pub fn scan(opts: &ScanOptions, cancel: &AtomicBool, progress: &Progress) -> Sca
         }
         let rd = match std::fs::read_dir(root) {
             Ok(rd) => rd,
-            Err(_) => {
-                progress.errors.fetch_add(1, Relaxed);
+            Err(e) => {
+                progress.record_error(root, &e);
                 continue;
             }
         };
@@ -329,10 +430,15 @@ pub fn scan(opts: &ScanOptions, cancel: &AtomicBool, progress: &Progress) -> Sca
         files_visited: progress.files.load(Relaxed),
         errors: progress.errors.load(Relaxed),
     };
+    let samples = progress.error_samples.lock().map(|v| v.clone()).unwrap_or_default();
+    let permission = progress.err_permission.load(Relaxed);
+    let in_use = progress.err_in_use.load(Relaxed);
+    let total = progress.errors.load(Relaxed);
     ScanOutput {
         items,
         summary,
         cancelled: cancel.load(Relaxed),
+        errors: ScanErrors { permission, in_use, other: total.saturating_sub(permission + in_use), samples },
     }
 }
 
@@ -461,5 +567,59 @@ mod tests {
         let st = dir_stats(dir.path(), &AtomicBool::new(false));
         assert_eq!((st.size, st.files), (30, 2));
         assert!(st.newest > 0);
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn vanished_files_are_not_errors_but_denied_and_in_use_are() {
+        assert_eq!(classify_io_error(&Error::from(ErrorKind::NotFound)), None);
+        assert_eq!(classify_io_error(&Error::from(ErrorKind::PermissionDenied)), Some(ErrKind::Permission));
+        #[cfg(windows)]
+        {
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(2)), None);
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(3)), None);
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(5)), Some(ErrKind::Permission));
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(32)), Some(ErrKind::InUse));
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(33)), Some(ErrKind::InUse));
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(1450)), Some(ErrKind::Other));
+        }
+        #[cfg(unix)]
+        {
+            // 13 = EACCES (PermissionDenied); 5 = EIO must NOT be mistaken for "access denied"
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(13)), Some(ErrKind::Permission));
+            assert_eq!(classify_io_error(&Error::from_raw_os_error(5)), Some(ErrKind::Other));
+        }
+    }
+
+    #[test]
+    fn record_error_counts_by_kind_and_keeps_bounded_examples() {
+        let p = Progress::default();
+        p.record_error(Path::new("gone"), &Error::from(ErrorKind::NotFound));
+        assert_eq!(p.errors.load(Relaxed), 0, "a vanished file is not counted");
+        for i in 0..(MAX_ERROR_SAMPLES + 50) {
+            p.record_error(Path::new(&format!("denied-{i}")), &Error::from(ErrorKind::PermissionDenied));
+        }
+        p.record_error(Path::new("weird"), &Error::new(ErrorKind::Other, "x"));
+        assert_eq!(p.err_permission.load(Relaxed), (MAX_ERROR_SAMPLES + 50) as u64);
+        assert_eq!(p.errors.load(Relaxed), (MAX_ERROR_SAMPLES + 51) as u64);
+        assert_eq!(p.error_samples.lock().unwrap().len(), MAX_ERROR_SAMPLES);
+    }
+
+    /// A folder the current user may not list is reported (not silently under-counted).
+    /// Skipped where no such folder exists or the test runs elevated.
+    #[test]
+    fn an_unreadable_folder_is_reported_by_dir_stats() {
+        let candidates = if cfg!(windows) { vec![r"C:\System Volume Information"] } else { vec!["/private/var/db/sudo", "/root"] };
+        let Some(dir) = candidates.into_iter().map(PathBuf::from).find(|p| std::fs::read_dir(p).is_err() && p.exists()) else {
+            return;
+        };
+        let mut seen = Vec::new();
+        dir_stats_report(&dir, &AtomicBool::new(false), &mut |p, e| seen.push((p.to_path_buf(), classify_io_error(e))));
+        assert!(seen.iter().any(|(_, k)| *k == Some(ErrKind::Permission)), "{seen:?}");
     }
 }

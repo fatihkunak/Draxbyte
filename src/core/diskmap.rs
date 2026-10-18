@@ -59,9 +59,15 @@ fn walk(dir: &Path, depth: usize, opts: &MapOptions, cancel: &AtomicBool, progre
     if cancel.load(Relaxed) {
         return node;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        progress.errors.fetch_add(1, Relaxed);
-        return node;
+    let rd = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) => {
+            // a folder that vanished meanwhile is not an access problem
+            if crate::core::scanner::classify_io_error(&e).is_some() {
+                progress.errors.fetch_add(1, Relaxed);
+            }
+            return node;
+        }
     };
     let mut subdirs: Vec<PathBuf> = Vec::new();
     let (mut folded_size, mut folded_files, mut folded_items) = (0u64, 0u64, 0u64);

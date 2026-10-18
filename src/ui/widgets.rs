@@ -290,3 +290,13 @@ pub fn reveal(path: &std::path::Path) {
         let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
     }
 }
+
+/// Opens the system page where Full Disk Access is granted (macOS); elsewhere does nothing.
+pub fn open_full_disk_access() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+            .spawn();
+    }
+}

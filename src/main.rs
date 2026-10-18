@@ -45,6 +45,18 @@ fn main() -> Result<()> {
         return cli::run(args, cfg);
     }
 
+    // Windows: ask for administrator rights at start so nothing is out of reach (the user's
+    // choice; Settings can turn it off). Declining the UAC prompt just starts the app as usual.
+    // DRAXBYTE_NO_ELEVATE=1 skips it (automated screenshots and tests).
+    if cfg!(windows)
+        && cfg.ui.always_admin
+        && std::env::var_os("DRAXBYTE_NO_ELEVATE").is_none()
+        && !draxbyte::core::elevate::is_elevated()
+        && draxbyte::core::elevate::relaunch_elevated().is_ok()
+    {
+        return Ok(());
+    }
+
     let icon = egui::IconData {
         rgba: ui::ICON_RGBA.to_vec(),
         width: 256,

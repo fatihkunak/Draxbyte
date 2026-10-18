@@ -1,6 +1,8 @@
 name: macOS DMG
 on:
   workflow_dispatch:
+  push:
+    branches: [macos-dmg]
 
 jobs:
   dmg:

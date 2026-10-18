@@ -26,6 +26,7 @@
 
 ## 🤖 AI (opsiyonel, varsayılan KAPALI)
 - [[AiProviders]] — sağlayıcı kayıt defteri (14), anahtar/adres çözümü, model listesi çekme, istek biçimleri
+- [[Advisor]] — AI Danışman: tarama hakkında sohbet + AI rapor; sağlayıcı zinciri (failover), anahtar yalıtımı, gizlilik
 - [[AiClient]] — OpenAI-uyumlu istemci; tüm maliyet korumaları ağ çağrısından ÖNCE
 - [[AiCache]] — yanıt önbelleği + günlük token sayacı (cache temizlense de sayaç sıfırlanmaz)
 - [[AiPrompt]] — minimal prompt (yalnız metadata+yol), max_tokens=200

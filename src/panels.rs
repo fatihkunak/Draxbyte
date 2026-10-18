@@ -392,6 +392,7 @@ impl App {
     pub fn panels_poll(&mut self) {
         self.map_dupes_poll();
         self.opt_poll();
+        self.advisor_poll();
         if let Some(rx) = &self.apps.job {
             if let Ok(list) = rx.try_recv() {
                 self.apps.job = None;

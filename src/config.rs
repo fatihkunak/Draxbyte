@@ -49,6 +49,39 @@ pub struct RulesConfig {
     pub large_file_mb: u64,
 }
 
+/// One link of the AI advisor's failover chain (the first enabled one is the primary).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ChainProvider {
+    pub enabled: bool,
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    /// Key of this entry only. Prefer the `DRAXBYTE_API_KEY_<PROVIDER>` environment variable.
+    pub api_key: String,
+}
+
+impl Default for ChainProvider {
+    fn default() -> Self {
+        Self { enabled: true, provider: String::new(), base_url: String::new(), model: String::new(), api_key: String::new() }
+    }
+}
+
+/// A provider the advisor will try, with its key already worked out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdvisorTarget {
+    pub provider: String,
+    pub base_url: String,
+    pub model: String,
+    pub key: Option<String>,
+}
+
+/// `DRAXBYTE_API_KEY_OPENAI`, `DRAXBYTE_API_KEY_NVIDIA_NIM`…
+pub fn provider_key_env(provider: &str) -> String {
+    let id: String = provider.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_uppercase() } else { '_' }).collect();
+    format!("{API_KEY_ENV}_{id}")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AiConfig {
@@ -63,6 +96,8 @@ pub struct AiConfig {
     pub daily_token_limit: u64,
     pub cache_enabled: bool,
     pub cache_path: String,
+    /// Failover chain of the AI advisor. Empty = just the single provider above.
+    pub chain: Vec<ChainProvider>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +175,7 @@ impl Default for AiConfig {
             daily_token_limit: 50_000,
             cache_enabled: true,
             cache_path: "~/.draxbyte/cache.db".into(),
+            chain: Vec::new(),
         }
     }
 }
@@ -163,6 +199,36 @@ impl AiConfig {
             .and_then(|k| nonempty(&k))
             .or_else(|| self.api_keys.get(&self.provider).and_then(|k| nonempty(k)))
             .or_else(|| nonempty(&self.api_key))
+    }
+}
+
+impl AiConfig {
+    /// Key of a chain entry: its own environment variable, then its own key, then the key stored
+    /// for that provider. Never the global `DRAXBYTE_API_KEY`: with several providers in a chain
+    /// that one variable would send a single provider's key to all of them.
+    pub fn chain_key(&self, e: &ChainProvider) -> Option<String> {
+        let nonempty = |k: &str| Some(k.trim().to_string()).filter(|k| !k.is_empty());
+        std::env::var(provider_key_env(&e.provider))
+            .ok()
+            .and_then(|k| nonempty(&k))
+            .or_else(|| nonempty(&e.api_key))
+            .or_else(|| self.api_keys.get(&e.provider).and_then(|k| nonempty(k)))
+    }
+
+    /// What the advisor tries, primary first: the enabled chain entries, or, when no chain is set,
+    /// the single provider of `[ai]` (which may use the global key variable: it is the only one).
+    pub fn advisor_targets(&self) -> Vec<AdvisorTarget> {
+        let entries: Vec<&ChainProvider> = self.chain.iter().filter(|e| e.enabled && !e.provider.is_empty()).collect();
+        if entries.is_empty() {
+            if self.provider.is_empty() {
+                return Vec::new();
+            }
+            return vec![AdvisorTarget { provider: self.provider.clone(), base_url: self.base_url.clone(), model: self.model.clone(), key: self.resolved_api_key() }];
+        }
+        entries
+            .into_iter()
+            .map(|e| AdvisorTarget { provider: e.provider.clone(), base_url: e.base_url.clone(), model: e.model.clone(), key: self.chain_key(e) })
+            .collect()
     }
 }
 
@@ -239,6 +305,50 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_provider_chain_survives_save_and_load_in_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("c.toml");
+        let mut c = Config::default();
+        c.ai.enabled = true;
+        for (p, m) in [("groq", "llama"), ("openai", "gpt-4o-mini"), ("ollama", "qwen")] {
+            c.ai.chain.push(ChainProvider { provider: p.into(), model: m.into(), api_key: format!("key-{p}"), ..Default::default() });
+        }
+        c.ai.chain[1].enabled = false;
+        c.save(&f).unwrap();
+        let back = Config::load(&f).unwrap();
+        assert_eq!(back.ai.chain, c.ai.chain);
+        // the disabled middle entry is skipped, the order of the others is kept
+        let t = back.ai.advisor_targets();
+        assert_eq!(t.iter().map(|x| x.provider.as_str()).collect::<Vec<_>>(), vec!["groq", "ollama"]);
+    }
+
+    #[test]
+    fn every_chain_entry_gets_only_its_own_key() {
+        let mut c = AiConfig::default();
+        c.api_keys.insert("openai".into(), "stored-openai".into());
+        let own = ChainProvider { provider: "groq".into(), api_key: "own-groq".into(), ..Default::default() };
+        let stored = ChainProvider { provider: "openai".into(), ..Default::default() };
+        let none = ChainProvider { provider: "mistral".into(), ..Default::default() };
+        assert_eq!(c.chain_key(&own).as_deref(), Some("own-groq"));
+        assert_eq!(c.chain_key(&stored).as_deref(), Some("stored-openai"));
+        assert_eq!(c.chain_key(&none), None, "a provider without a key never borrows another's");
+        assert_eq!(provider_key_env("nvidia-nim"), "DRAXBYTE_API_KEY_NVIDIA_NIM");
+        // per-provider variable (a name nothing else uses, so tests cannot race)
+        let z = ChainProvider { provider: "zz-draxbyte-test".into(), ..Default::default() };
+        std::env::set_var("DRAXBYTE_API_KEY_ZZ_DRAXBYTE_TEST", "from-env");
+        assert_eq!(c.chain_key(&z).as_deref(), Some("from-env"));
+        std::env::remove_var("DRAXBYTE_API_KEY_ZZ_DRAXBYTE_TEST");
+    }
+
+    #[test]
+    fn without_a_chain_the_single_provider_is_the_only_target() {
+        let c = AiConfig { provider: "groq".into(), model: "m".into(), ..AiConfig::default() };
+        let t = c.advisor_targets();
+        assert_eq!(t.len(), 1);
+        assert_eq!((t[0].provider.as_str(), t[0].model.as_str()), ("groq", "m"));
+    }
 
     #[test]
     fn old_config_with_depth_10_is_migrated_once() {

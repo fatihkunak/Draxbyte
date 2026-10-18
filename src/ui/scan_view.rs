@@ -496,6 +496,19 @@ fn distribution_card(app: &mut App, ui: &mut egui::Ui) {
                         );
                     });
                 }
+                if let Some((k, b)) = dist.first() {
+                    ui.add_space(4.0);
+                    if ui.small_button(t("AI Danışman'la tartış →", "Discuss with the AI Advisor →")).on_hover_text(t("Soruyu hazırlar, sen göndermeden hiçbir şey gitmez", "Prepares the question; nothing is sent until you press Send")).clicked() {
+                        app.adv.input = tf!(
+                            "\"{}\" bölümü ({}, %{:.0}) ne kadar silinebilir? Hangilerini önce, nasıl silmeliyim, riskleri neler?",
+                            "How much of \"{}\" ({}, {:.0}%) can I delete? Which first, how, and what are the risks?",
+                            k.label(),
+                            human_bytes(*b),
+                            *b as f32 * 100.0 / total as f32
+                        );
+                        app.view = View::Advisor;
+                    }
+                }
             });
         });
     });

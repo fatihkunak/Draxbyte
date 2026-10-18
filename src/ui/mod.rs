@@ -1,6 +1,7 @@
 //! Theme, shell (sidebar + content) and view dispatch. Palette follows the brand sheet.
 
 pub mod about_view;
+pub mod advisor_view;
 pub mod apps_view;
 pub mod diskmap_view;
 pub mod dupes_view;
@@ -114,10 +115,11 @@ pub fn apply_theme(ctx: &egui::Context) {
     });
 }
 
-fn nav() -> [(View, &'static str); 12] {
+fn nav() -> [(View, &'static str); 13] {
     [
         (View::Home, t("Ana Sayfa", "Home")),
         (View::Optimize, t("Tam Optimizasyon", "Full Optimization")),
+        (View::Advisor, t("AI Danışman", "AI Advisor")),
         (View::Scan, t("Tarama", "Scan")),
         (View::Results, t("Sonuçlar", "Results")),
         (View::Clean, t("Temizlik", "Cleanup")),
@@ -151,6 +153,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
         .show(ui, |ui| match app.view {
             View::Home => scan_view::home(app, ui),
             View::Optimize => optimize_view::optimize(app, ui),
+            View::Advisor => advisor_view::advisor(app, ui),
             View::Scan => scan_view::progress(app, ui),
             View::Results => result_view::results(app, ui),
             View::Clean => result_view::clean(app, ui),
@@ -176,7 +179,8 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
         let selected = app.view == view;
         let busy = (view == View::Scan && app.scan.is_some())
             || (view == View::Clean && app.clean_job.is_some())
-            || (view == View::Optimize && app.opt.busy());
+            || (view == View::Optimize && app.opt.busy())
+            || (view == View::Advisor && app.adv.job.is_some());
         let text = if busy {
             format!("{label}  •")
         } else {

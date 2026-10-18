@@ -1,6 +1,7 @@
 // No console window for the GUI build on Windows (CLI subcommands still print when started from a terminal).
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
+mod advisor;
 mod app;
 mod cli;
 mod map_dupes;

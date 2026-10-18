@@ -289,6 +289,11 @@ fn validate_base_url(raw: &str, info: &ProviderInfo) -> Result<(), AiError> {
 /// Turns the `[ai]` config into usable credentials. `model` may be empty only for
 /// providers without a default; the caller must then have fetched/typed one.
 pub fn resolve(cfg: &AiConfig) -> Result<Creds, AiError> {
+    resolve_with_key(cfg, cfg.resolved_api_key())
+}
+
+/// Same as `resolve`, with the key chosen by the caller (the advisor chain keeps one key per provider).
+pub fn resolve_with_key(cfg: &AiConfig, key: Option<String>) -> Result<Creds, AiError> {
     let info = get(&cfg.provider).ok_or_else(|| AiError::BadProvider(cfg.provider.clone()))?;
     let typed = cfg.base_url.trim().trim_end_matches('/');
     // A leftover address that belongs to another provider (older config files stored
@@ -313,7 +318,7 @@ pub fn resolve(cfg: &AiConfig) -> Result<Creds, AiError> {
         .or(info.default_model)
         .unwrap_or("")
         .to_string();
-    let api_key = cfg.resolved_api_key().unwrap_or_default();
+    let api_key = key.unwrap_or_default();
     if info.needs_key && api_key.is_empty() {
         return Err(AiError::NoApiKey);
     }
@@ -461,6 +466,41 @@ pub async fn send_chat(c: &Creds, p: &Prompt, estimate: u64) -> Result<(String, 
         .send()
         .await
         .map_err(|e| AiError::Http(redact(&e.to_string(), &c.api_key)))?;
+    parse_response(c.info.kind, &read(resp, &c.api_key).await?, estimate)
+}
+
+/// A conversation: `turns` are (`"user"` | `"assistant"`, text). Anthropic and OpenAI-compatible
+/// bodies differ only in where the system prompt goes.
+pub fn request_body_chat(c: &Creds, system: &str, turns: &[(&str, &str)], max_tokens: u64) -> Value {
+    let msgs: Vec<Value> = turns.iter().map(|(r, t)| json!({ "role": r, "content": t })).collect();
+    match c.info.kind {
+        Kind::Anthropic => json!({
+            "model": c.model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": msgs,
+        }),
+        Kind::OpenAiCompat => {
+            let mut all = vec![json!({ "role": "system", "content": system })];
+            all.extend(msgs);
+            json!({
+                "model": c.model,
+                c.info.max_tokens_param: max_tokens,
+                "stream": false,
+                "messages": all,
+            })
+        }
+    }
+}
+
+/// One chat request with a conversation (60 s: answers are longer than the one-line verdicts).
+pub async fn send_chat_turns(c: &Creds, system: &str, turns: &[(&str, &str)], max_tokens: u64, estimate: u64) -> Result<(String, u64), AiError> {
+    if c.model.is_empty() {
+        return Err(AiError::ModelRequired);
+    }
+    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60)).build().unwrap_or_default();
+    let rb = http.post(chat_url(c)).json(&request_body_chat(c, system, turns, max_tokens));
+    let resp = with_headers(rb, c).send().await.map_err(|e| AiError::Http(redact(&e.to_string(), &c.api_key)))?;
     parse_response(c.info.kind, &read(resp, &c.api_key).await?, estimate)
 }
 

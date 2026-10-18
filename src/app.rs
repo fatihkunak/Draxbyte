@@ -22,6 +22,7 @@ use std::time::Instant;
 pub enum View {
     Home,
     Optimize,
+    Advisor,
     Scan,
     Results,
     Clean,
@@ -130,6 +131,8 @@ pub struct App {
     pub confirm_clear_cache: bool,
 
     pub ai: Option<Arc<AiService>>,
+    pub advisor: Option<Arc<draxbyte::ai::advisor::Advisor>>,
+    pub adv: crate::advisor::AdvisorState,
     pub ai_error: Option<String>,
     pub ai_confirm: Option<usize>,
     pub ai_inflight: HashSet<PathBuf>,
@@ -228,6 +231,7 @@ impl App {
                 "programs" => View::Programs,
                 "system" => View::System,
                 "optimize" => View::Optimize,
+                "advisor" => View::Advisor,
                 "map" => View::DiskMap,
                 "dupes" => View::Duplicates,
                 "settings" => View::Settings,
@@ -249,6 +253,8 @@ impl App {
             report: None,
             confirm_clear_cache: false,
             ai: None,
+            advisor: None,
+            adv: Default::default(),
             ai_error: None,
             ai_confirm: None,
             ai_inflight: HashSet::new(),
@@ -286,6 +292,14 @@ impl App {
             app.opt_analyze(&cc.egui_ctx);
         }
         app.rebuild_ai();
+        // DRAXBYTE_ADVISOR_DEMO=<question>: opens the advisor and sends that question (demos, tests)
+        if let Ok(q) = std::env::var("DRAXBYTE_ADVISOR_DEMO") {
+            if app.advisor.is_some() {
+                app.adv.consent = true;
+                app.view = View::Advisor;
+                app.advisor_send(&cc.egui_ctx, &q);
+            }
+        }
         if app.cfg.ui.check_updates {
             app.start_update_check(&cc.egui_ctx);
         }
@@ -389,6 +403,7 @@ impl App {
     /// happens here; when AI is off the service simply does not exist.
     pub fn rebuild_ai(&mut self) {
         self.ai = None;
+        self.advisor = None;
         self.ai_error = None;
         if !self.cfg.ai.enabled {
             return;
@@ -396,6 +411,12 @@ impl App {
         match AiService::new(&self.cfg.ai) {
             Ok(s) => self.ai = Some(Arc::new(s)),
             Err(e) => self.ai_error = Some(e.to_string()),
+        }
+        match draxbyte::ai::advisor::Advisor::new(&self.cfg.ai) {
+            Ok(a) => self.advisor = Some(Arc::new(a)),
+            Err(e) => {
+                self.ai_error.get_or_insert(e.to_string());
+            }
         }
     }
 

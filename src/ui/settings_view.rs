@@ -178,6 +178,11 @@ pub fn settings(app: &mut App, ui: &mut egui::Ui) {
             card(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ai_section(app, ui, &mut want_fetch, &mut want_test);
+                if app.cfg_draft.ai.enabled {
+                    ui.add_space(8.0);
+                    ui.separator();
+                    chain_section(app, ui);
+                }
             });
             ui.add_space(8.0);
             card(ui, |ui| {
@@ -369,6 +374,94 @@ pub fn cache(app: &mut App, ui: &mut egui::Ui) {
     } else if ui.button(t("Önbelleği temizle", "Clear cache")).clicked() {
         app.confirm_clear_cache = true;
     }
+}
+
+/// Failover chain of the AI advisor: any number of providers, tried top to bottom.
+fn chain_section(app: &mut App, ui: &mut egui::Ui) {
+    use draxbyte::config::{provider_key_env, ChainProvider};
+    enum Act {
+        Up,
+        Down,
+        Remove,
+    }
+    ui.label(RichText::new(t("AI Danışman: sağlayıcı zinciri (yedekleme)", "AI Advisor: provider chain (failover)")).strong());
+    ui.label(
+        RichText::new(t(
+            "Sohbet ve AI rapor her zaman en üstteki (birincil) sağlayıcıyla başlar; ağ hatası, kota, geçersiz anahtar ya da sunucu hatasında sıradakine geçer. İstediğin kadar sağlayıcı ekleyebilirsin. Zincir boşsa yukarıdaki tekli sağlayıcı kullanılır.",
+            "Chat and the AI report always start with the top (primary) provider and move to the next one on a network error, quota, bad key or server error. Add as many providers as you like. With an empty chain the single provider above is used.",
+        ))
+        .color(MUTED)
+        .small(),
+    );
+    let mut act: Option<(usize, Act)> = None;
+    let n = app.cfg_draft.ai.chain.len();
+    for i in 0..n {
+        let e = &mut app.cfg_draft.ai.chain[i];
+        let info = providers::get(&e.provider);
+        ui.horizontal_wrapped(|ui| {
+            ui.checkbox(&mut e.enabled, if i == 0 { t("1 · birincil", "1 · primary").to_string() } else { format!("{}", i + 1) });
+            egui::ComboBox::from_id_salt(("chain_provider", i))
+                .width(210.0)
+                .selected_text(info.map(|p| p.display_label()).unwrap_or("—"))
+                .show_ui(ui, |ui| {
+                    for p in providers::PROVIDERS.iter() {
+                        if ui.selectable_label(p.id == e.provider, p.display_label()).clicked() && p.id != e.provider {
+                            e.provider = p.id.to_string();
+                            e.model = p.default_model.unwrap_or("").to_string();
+                            e.base_url.clear();
+                        }
+                    }
+                });
+            let hint = info.and_then(|p| p.default_model).unwrap_or("model");
+            ui.add(egui::TextEdit::singleline(&mut e.model).hint_text(hint).desired_width(150.0));
+            if info.is_none_or(|p| p.needs_key) {
+                ui.add(egui::TextEdit::singleline(&mut e.api_key).password(true).hint_text(t("API anahtarı", "API key")).desired_width(170.0));
+            }
+            if ui.small_button("▲").clicked() && i > 0 {
+                act = Some((i, Act::Up));
+            }
+            if ui.small_button("▼").clicked() && i + 1 < n {
+                act = Some((i, Act::Down));
+            }
+            if ui.small_button("✕").on_hover_text(t("Zincirden çıkar", "Remove from the chain")).clicked() {
+                act = Some((i, Act::Remove));
+            }
+        });
+        if info.is_some_and(|p| p.base_url_editable()) {
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(RichText::new(t("Adres", "Address")).color(MUTED).small());
+                ui.add(egui::TextEdit::singleline(&mut e.base_url).hint_text(info.and_then(|p| p.base_url).unwrap_or("https://…/v1")).desired_width(360.0));
+            });
+        }
+        if !e.provider.is_empty() {
+            ui.label(RichText::new(tf!("Anahtarı ortam değişkeniyle de verebilirsin: {}", "You can also give the key as an environment variable: {}", provider_key_env(&e.provider))).color(MUTED).small());
+        }
+    }
+    if let Some((i, a)) = act {
+        let c = &mut app.cfg_draft.ai.chain;
+        match a {
+            Act::Up => c.swap(i, i - 1),
+            Act::Down => c.swap(i, i + 1),
+            Act::Remove => {
+                c.remove(i);
+            }
+        }
+    }
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(t("+ Sağlayıcı ekle", "+ Add a provider")).clicked() {
+            let used: Vec<String> = app.cfg_draft.ai.chain.iter().map(|e| e.provider.clone()).collect();
+            let p = providers::PROVIDERS.iter().find(|p| !used.contains(&p.id.to_string())).unwrap_or(&providers::PROVIDERS[0]);
+            app.cfg_draft.ai.chain.push(ChainProvider { provider: p.id.to_string(), model: p.default_model.unwrap_or("").to_string(), ..Default::default() });
+        }
+        let single = app.cfg_draft.ai.provider.clone();
+        if !single.is_empty() && !app.cfg_draft.ai.chain.iter().any(|e| e.provider == single) && ui.button(t("Yukarıdaki tekli sağlayıcıyı zincire ekle", "Add the single provider above to the chain")).clicked() {
+            let ai = &app.cfg_draft.ai;
+            let key = ai.api_keys.get(&single).cloned().unwrap_or_default();
+            let e = ChainProvider { provider: single, model: ai.model.clone(), base_url: ai.base_url.clone(), api_key: key, ..Default::default() };
+            app.cfg_draft.ai.chain.insert(0, e);
+        }
+    });
 }
 
 fn ai_section(app: &mut App, ui: &mut egui::Ui, want_fetch: &mut bool, want_test: &mut bool) {

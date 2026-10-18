@@ -305,7 +305,7 @@ mod tests {
         assert!(find(&opts(t), &AtomicBool::new(false), &DupeProgress::default()).is_empty());
         let mut o = opts(t);
         o.skip_dev = false;
-        assert_eq!(find(&o, &AtomicBool::new(false), &DupeProgress::default()).len(), 1);
+        assert_eq!(find(&o, &AtomicBool::new(false), &DupeProgress::default()).len(), 2, "node_modules pair + intermediates pair");
     }
 
     #[test]

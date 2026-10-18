@@ -7,7 +7,8 @@
 
 use std::path::{Component, Path, PathBuf};
 
-#[cfg(target_os = "macos")]
+// Compiled on every platform's test build so its logic is tested without a Mac.
+#[cfg(any(target_os = "macos", test))]
 pub mod mac;
 #[cfg(windows)]
 pub mod win;
@@ -648,7 +649,12 @@ pub fn create_restore_point(description: &str) -> Result<(), String> {
     {
         win::create_restore_point(description)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        let _ = description;
+        mac::snapshot()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = description;
         Err(crate::tr!("Bu platformda yok".to_string(), "Not available on this platform".to_string()))

@@ -163,7 +163,9 @@ pub fn programs(app: &mut App, ui: &mut egui::Ui) {
                 });
                 row.col(|ui| match &a.removable {
                     Removability::Sealed(why) => {
-                        ui.add_enabled(false, egui::Button::new(t("Kaldırılamaz", "Cannot remove"))).on_disabled_hover_text(why);
+                        if ui.button(t("Kaldırılamaz…", "Can't remove…")).on_hover_text(why).clicked() {
+                            open = Some(idx);
+                        }
                     }
                     Removability::Blocked(why) => {
                         if ui.add(danger_button(t("Zorla kaldır", "Force remove"))).on_hover_text(why).clicked() {
@@ -184,7 +186,8 @@ pub fn programs(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn elevation_banner(app: &mut App, ui: &mut egui::Ui) {
-    if draxbyte::core::elevate::is_elevated() {
+    // macOS asks for the password at the moment an action needs it; only Windows needs a restart.
+    if !cfg!(windows) || draxbyte::core::elevate::is_elevated() {
         return;
     }
     card(ui, |ui| {
@@ -241,6 +244,13 @@ pub fn flow_modal(app: &mut App, ctx: &egui::Context) {
     match action {
         FlowAction::Run => app.flow_run(ctx),
         FlowAction::Clean => app.flow_clean(ctx),
+        FlowAction::CleanSealed => {
+            if let Some(f) = app.apps.flow.as_mut() {
+                f.items = f.preview.clone().unwrap_or_default().into_iter().map(|l| (l, true)).collect();
+                f.log = vec![t("Bu uygulama kaldırılamaz; yalnızca önbelleği ve geçici verisi temizlenir.", "This app cannot be removed; only its caches and temporary data are cleaned.").to_string()];
+                f.stage = FlowStage::Cleanup;
+            }
+        }
         FlowAction::Close => app.flow_close(),
         FlowAction::Restore => {
             if let Some(dir) = app.apps.last_backup.clone() {
@@ -273,6 +283,7 @@ enum FlowAction {
     None,
     Run,
     Clean,
+    CleanSealed,
     Close,
     Restore,
 }
@@ -342,7 +353,12 @@ fn review(f: &mut crate::panels::Flow, ui: &mut egui::Ui, action: &mut FlowActio
     }
     ui.add_space(10.0);
     ui.horizontal(|ui| {
-        if ui.add_enabled(!sealed && f.preview.is_some(), danger_button(t("Kaldır", "Remove"))).clicked() {
+        if sealed {
+            let has = f.preview.as_ref().map(|p| !p.is_empty()).unwrap_or(false);
+            if ui.add_enabled(has, primary_button(t("Önbelleğini ve geçici verisini temizle", "Clean its caches and temporary data"))).clicked() {
+                *action = FlowAction::CleanSealed;
+            }
+        } else if ui.add_enabled(f.preview.is_some(), danger_button(t("Kaldır", "Remove"))).clicked() {
             *action = FlowAction::Run;
         }
         if ui.button(t("Vazgeç", "Cancel")).clicked() {

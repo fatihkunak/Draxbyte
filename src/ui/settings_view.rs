@@ -115,6 +115,8 @@ pub fn settings(app: &mut App, ui: &mut egui::Ui) {
                 );
                 let init = lines(&app.cfg_draft.scan.exclude_patterns);
                 text_field(ui, T_EXCL, || init, 3);
+                ui.checkbox(&mut app.cfg_draft.scan.all_drives, t("Her dahili sürücüyü tara (yalnız varsayılan yollarla)", "Scan every internal drive (with the default paths only)"));
+                ui.checkbox(&mut app.cfg_draft.scan.include_system, t("Sistem klasörlerini tara: Windows Temp, Package Cache, Windows.old… (yalnız varsayılan yollarla)", "Scan the system folders: Windows Temp, Package Cache, Windows.old… (with the default paths only)"));
                 ui.horizontal(|ui| {
                     ui.label(t("Maks. derinlik", "Max depth"));
                     ui.add(egui::DragValue::new(&mut app.cfg_draft.scan.max_depth).range(1..=64));

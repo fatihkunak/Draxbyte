@@ -49,10 +49,66 @@ pub fn home(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(14.0);
             last_scan(app, ui);
             ui.add_space(14.0);
+            unused_card(app, ui);
             bin_card(app, ui);
             ui.add_space(14.0);
             docker_card(app, ui);
         });
+}
+
+/// Suggests removing programs that were not opened for a long time (the list comes from the
+/// Programs screen; "unknown" last use is never counted as unused).
+fn unused_card(app: &mut App, ui: &mut egui::Ui) {
+    use draxbyte::core::apps::{self, Removability};
+    if !apps::supported() {
+        return;
+    }
+    let ctx = ui.ctx().clone();
+    if !app.apps.loaded && app.apps.job.is_none() {
+        app.apps_refresh(&ctx);
+    }
+    if !app.apps.loaded {
+        return;
+    }
+    let (now, days) = (now_secs(), app.apps.unused_days);
+    let (n, bytes) = app
+        .apps
+        .list
+        .iter()
+        .filter(|a| !a.system_component && !matches!(a.removable, Removability::Sealed(_)))
+        .filter(|a| a.days_unused(now).map(|d| d >= days).unwrap_or(false))
+        .fold((0usize, 0u64), |(n, b), a| (n + 1, b + a.size_bytes));
+    if n == 0 {
+        return;
+    }
+    card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.label(RichText::new(t("Kullanılmayan programlar", "Unused programs")).font(super::bold(17.0)));
+        ui.label(
+            RichText::new(tf!(
+                "{} program {} gündür açılmamış · toplam {} yer kaplıyor",
+                "{} programs have not been opened for {} days · together they take {}",
+                n,
+                days,
+                human_bytes(bytes)
+            ))
+            .color(ACCENT),
+        );
+        ui.label(
+            RichText::new(t(
+                "Son kullanım Windows/macOS'un kayıtlarından tahmin edilir; kaydı olmayan programlar sayılmaz. Hiçbir şey sen onaylamadan kaldırılmaz.",
+                "Last use is estimated from the system's records; programs with no record are not counted. Nothing is removed without your approval.",
+            ))
+            .color(MUTED)
+            .small(),
+        );
+        if ui.button(t("Gözden geçir ve kaldır…", "Review and remove…")).clicked() {
+            app.apps.only_unused = true;
+            app.apps.sort = crate::panels::AppSort::Size;
+            app.view = View::Programs;
+        }
+    });
+    ui.add_space(14.0);
 }
 
 fn bin_card(app: &mut App, ui: &mut egui::Ui) {
@@ -146,6 +202,17 @@ fn hero(app: &mut App, ui: &mut egui::Ui) {
                         app.scan_paths_text = app.cfg.scan.default_paths.join("; ");
                     }
                 });
+                if app.scan_paths_text == app.cfg.scan.default_paths.join("; ") {
+                    let extra = match (app.cfg.scan.all_drives, app.cfg.scan.include_system) {
+                        (true, true) => t("Ayrıca her dahili sürücü ve sistem klasörleri (Windows Temp, Package Cache…) taranır.", "Every internal drive and the system folders (Windows Temp, Package Cache…) are scanned as well."),
+                        (true, false) => t("Ayrıca her dahili sürücü taranır.", "Every internal drive is scanned as well."),
+                        (false, true) => t("Ayrıca sistem klasörleri taranır.", "The system folders are scanned as well."),
+                        (false, false) => "",
+                    };
+                    if !extra.is_empty() {
+                        ui.label(RichText::new(extra).color(MUTED).small());
+                    }
+                }
             });
             strip.cell(|ui| {
                 ui.horizontal(|ui| {

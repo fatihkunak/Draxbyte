@@ -737,6 +737,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn leftover_paths_follow_the_guard() {
         let r = roots();
         let ok = |p: &str, loc: Option<&str>| leftover_path_allowed(Path::new(p), loc.map(Path::new), &r);
@@ -760,6 +761,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn own_install_folder_is_allowed_even_under_a_vendor_folder_but_not_a_shared_root() {
         let r = roots();
         let loc = Path::new(r"C:\Program Files (x86)\Microsoft\Edge");
@@ -776,6 +778,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn shortcuts_in_start_menu_and_desktop_are_allowed() {
         let r = roots();
         assert!(leftover_path_allowed(

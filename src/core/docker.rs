@@ -270,6 +270,37 @@ pub fn parse_images(stdout: &str) -> Vec<DockerItem> {
     json_items(stdout, &["Repository", "Tag"], &["CreatedSince"], "Size")
 }
 
+/// Docker names the volumes it creates by itself (no name given) with 64 hex characters; only
+/// those are removed by `volume prune` on Docker 23 and newer.
+pub fn is_anonymous_volume(name: &str) -> bool {
+    name.len() == 64 && name.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Unused volumes with their size, from `docker system df -v --format {{json .}}` (one JSON
+/// object with a `Volumes` array), biggest first. Unused = no container links to it.
+pub fn parse_df_volumes(stdout: &str) -> Vec<DockerItem> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(stdout.trim()) else { return Vec::new() };
+    let mut items: Vec<DockerItem> = v["Volumes"]
+        .as_array()
+        .map(|a| a.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter(|x| x["Links"].as_str().map(|l| l.trim() == "0").unwrap_or_else(|| x["Links"].as_i64() == Some(0)))
+        .map(|x| {
+            let name = x["Name"].as_str().unwrap_or_default().to_string();
+            let kind = if is_anonymous_volume(&name) {
+                t("anonim (otomatik oluşmuş)", "anonymous (auto-created)")
+            } else {
+                t("ADLI, elle oluşturulmuş: silinmez/dikkat", "NAMED, created on purpose: be careful")
+            };
+            let name = if is_anonymous_volume(&name) { format!("{}…", &name[..12]) } else { name };
+            DockerItem { name, info: kind.to_string(), size: x["Size"].as_str().unwrap_or_default().to_string() }
+        })
+        .collect();
+    items.sort_by(|a, b| parse_size(&b.size).cmp(&parse_size(&a.size)));
+    items
+}
+
 pub fn parse_volumes(stdout: &str) -> Vec<DockerItem> {
     json_items(stdout, &["Name"], &["Driver"], "Size")
 }
@@ -313,6 +344,18 @@ pub fn disk_image_size() -> Option<u64> {
     cands.iter().find_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
 }
 
+/// Unused volumes with sizes (`system df -v` measures them, which can take a while); falls back
+/// to the plain name list when that fails.
+fn volumes_with_sizes() -> Vec<DockerItem> {
+    if let Ok(out) = run_capture(&["system", "df", "-v", "--format", "{{json .}}"], 90) {
+        let v = parse_df_volumes(&out);
+        if !v.is_empty() || out.contains("\"Volumes\"") {
+            return v;
+        }
+    }
+    parse_volumes(&run_capture(&["volume", "ls", "--filter", "dangling=true", "--format", "{{json .}}"], 20).unwrap_or_default())
+}
+
 /// Read-only listing of what each part would remove. `rows` is the `check()` result.
 pub fn detail(rows: Vec<DockerRow>) -> DockerDetail {
     let list = |args: &[&str]| run_capture(args, 20).unwrap_or_default();
@@ -320,7 +363,7 @@ pub fn detail(rows: Vec<DockerRow>) -> DockerDetail {
         rows,
         stopped: parse_stopped(&list(&["ps", "-a", "-s", "--filter", "status=exited", "--filter", "status=created", "--filter", "status=dead", "--format", "{{json .}}"])),
         dangling_images: parse_images(&list(&["image", "ls", "--filter", "dangling=true", "--format", "{{json .}}"])),
-        volumes: parse_volumes(&list(&["volume", "ls", "--filter", "dangling=true", "--format", "{{json .}}"])),
+        volumes: volumes_with_sizes(),
         disk_image: disk_image_size(),
     }
 }
@@ -348,6 +391,23 @@ mod tests {
         assert_eq!(rows[0].kind, "Images");
         assert_eq!(rows[0].total, 17);
         assert_eq!(rows[1].reclaimable, "2.005GB");
+    }
+
+    #[test]
+    fn unused_volumes_come_with_sizes_biggest_first() {
+        let anon = "a".repeat(64);
+        let out = format!(
+            r#"{{"Volumes":[{{"Name":"pg-data","Links":"1","Size":"34.3GB"}},{{"Name":"supabase_db","Links":"0","Size":"81.26MB"}},{{"Name":"{anon}","Links":"0","Size":"57.44MB"}},{{"Name":"{}","Links":"0","Size":"1.2GB"}}]}}"#,
+            "b".repeat(64)
+        );
+        let v = parse_df_volumes(&out);
+        assert_eq!(v.len(), 3, "the volume a container uses is not listed");
+        assert_eq!(v[0].size, "1.2GB");
+        assert_eq!(v[1].name, "supabase_db");
+        assert_eq!(v[2].name, format!("{}…", "a".repeat(12)));
+        assert!(v[1].info.contains("ADLI") || v[1].info.contains("NAMED"));
+        assert!(is_anonymous_volume(&anon) && !is_anonymous_volume("supabase_db"));
+        assert!(parse_df_volumes("garbage").is_empty());
     }
 
     #[test]

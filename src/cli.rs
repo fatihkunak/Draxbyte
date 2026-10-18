@@ -253,6 +253,9 @@ pub fn run(cli: Cli, cfg: Config) -> Result<()> {
                 for r in &d.rows {
                     println!("  {:<14} {:>4} ({} {})  {:>10}  {} {}", r.kind, r.total, r.active, t("aktif", "active"), r.size, t("geri kazanılabilir", "reclaimable"), r.reclaimable);
                 }
+                for v in d.volumes.iter().take(8) {
+                    println!("  {} {:>10}  {}  {}", t("boşta birim", "unused volume"), v.size, v.name, v.info);
+                }
                 if let Some(img) = d.disk_image {
                     println!("{}", tf!("  Docker disk imajı: {} (temizlikle kendiliğinden küçülmez)", "  Docker disk image: {} (does not shrink by itself)", human_bytes(img)));
                 }

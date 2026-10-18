@@ -95,12 +95,14 @@ fn docker_parts_ui(ui: &mut egui::Ui, parts: &mut Parts, d: Option<&DockerDetail
         if let Some(d) = d {
             let items = part_items(d, part);
             if actionable && !items.is_empty() {
-                egui::CollapsingHeader::new(RichText::new(tf!("{} öğe", "{} items", items.len())).small()).id_salt(("docker-part", part as u8)).show(ui, |ui| {
-                    for i in items.iter().take(12) {
-                        ui.add(egui::Label::new(RichText::new(format!("{} · {} · {}", i.name, i.info, i.size)).small().color(MUTED)).truncate());
+                let total: u64 = items.iter().map(|i| draxbyte::core::docker::parse_size(i.size.split_whitespace().next().unwrap_or(""))).sum();
+                let head = if total > 0 { tf!("{} öğe · toplam {}", "{} items · {} in total", items.len(), human_bytes(total)) } else { tf!("{} öğe", "{} items", items.len()) };
+                egui::CollapsingHeader::new(RichText::new(head).small()).id_salt(("docker-part", part as u8)).show(ui, |ui| {
+                    for i in items.iter().take(40) {
+                        ui.add(egui::Label::new(RichText::new(format!("{} · {} · {}", i.size, i.name, i.info)).small().color(MUTED)).truncate());
                     }
-                    if items.len() > 12 {
-                        ui.label(RichText::new(tf!("… ve {} tane daha", "… and {} more", items.len() - 12)).small().color(MUTED));
+                    if items.len() > 40 {
+                        ui.label(RichText::new(tf!("… ve {} tane daha", "… and {} more", items.len() - 40)).small().color(MUTED));
                     }
                 });
             }

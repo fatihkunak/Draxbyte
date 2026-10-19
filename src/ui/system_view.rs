@@ -138,10 +138,13 @@ fn processes_card(app: &mut App, ui: &mut egui::Ui) {
         let mut protect: Option<(String, bool)> = None;
         let confirm = app.sys.confirm_close;
         let user_protected: Vec<bool> = app.sys.groups.iter().map(|g| app.is_user_protected(&g.name)).collect();
+        // The program column takes what is left of the row, but never more than 420 px: in a wide window the
+        // numbers and buttons stay next to the name instead of drifting to the far edge.
+        let name_w = (ui.available_width() - 60.0 - 90.0 - 380.0 - 4.0 * ui.spacing().item_spacing.x).clamp(180.0, 420.0);
         TableBuilder::new(ui)
             .striped(true)
             .cell_layout(Layout::left_to_right(Align::Center))
-            .column(Column::remainder().at_least(180.0).clip(true))
+            .column(Column::exact(name_w).clip(true))
             .column(Column::exact(60.0))
             .column(Column::exact(90.0))
             .column(Column::exact(380.0))

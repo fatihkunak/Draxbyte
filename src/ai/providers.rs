@@ -351,7 +351,26 @@ pub fn chat_url(c: &Creds) -> String {
     }
 }
 
+/// Gemini 3.x "thinks" by default: a one-word answer took 125 s in a real test (5 s with thinking off),
+/// longer than any sensible timeout. Draxbyte's questions do not need long reasoning, so it is turned off
+/// (`reasoning_effort: "none"`). A model that refuses this setting is asked again without it (see `post_json`).
+const THINKING_OFF: &str = "reasoning_effort";
+
+fn thinking_off(c: &Creds, body: &mut Value) {
+    if c.info.id == "gemini" {
+        if let Some(o) = body.as_object_mut() {
+            o.insert(THINKING_OFF.into(), json!("none"));
+        }
+    }
+}
+
 pub fn request_body(c: &Creds, p: &Prompt) -> Value {
+    let mut body = request_body_plain(c, p);
+    thinking_off(c, &mut body);
+    body
+}
+
+fn request_body_plain(c: &Creds, p: &Prompt) -> Value {
     match c.info.kind {
         Kind::Anthropic => json!({
             "model": c.model,
@@ -443,7 +462,7 @@ fn redact(text: &str, key: &str) -> String {
 
 fn client() -> reqwest::Client {
     reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(60))
         .build()
         .unwrap_or_default()
 }
@@ -467,22 +486,51 @@ async fn read(resp: reqwest::Response, key: &str) -> Result<Value, AiError> {
     serde_json::from_str(&text).map_err(|_| AiError::BadResponse(redact(&text, key)))
 }
 
+/// Sends `body`; when a provider refuses the thinking setting (HTTP 400 that mentions it), asks again
+/// without it. A timeout is named as one: the raw "error sending request" says nothing.
+async fn post_json(http: &reqwest::Client, c: &Creds, mut body: Value) -> Result<Value, AiError> {
+    for attempt in 0..2 {
+        let rb = with_headers(http.post(chat_url(c)).json(&body), c);
+        let resp = rb.send().await.map_err(|e| {
+            AiError::Http(if e.is_timeout() {
+                t("zaman aşımı: sağlayıcı süre içinde yanıt vermedi", "timeout: the provider did not answer in time").to_string()
+            } else {
+                redact(&e.to_string(), &c.api_key)
+            })
+        })?;
+        match read(resp, &c.api_key).await {
+            Err(AiError::Http(m)) if attempt == 0 && body.get(THINKING_OFF).is_some() && m.starts_with("400") && {
+                let l = m.to_lowercase();
+                l.contains("reasoning") || l.contains("thinking")
+            } => {
+                if let Some(o) = body.as_object_mut() {
+                    o.remove(THINKING_OFF);
+                }
+            }
+            other => return other,
+        }
+    }
+    unreachable!("the second attempt always returns")
+}
+
 /// One guarded chat request (the caller already did the cache/limit checks).
 pub async fn send_chat(c: &Creds, p: &Prompt, estimate: u64) -> Result<(String, u64), AiError> {
     if c.model.is_empty() {
         return Err(AiError::ModelRequired);
     }
-    let rb = client().post(chat_url(c)).json(&request_body(c, p));
-    let resp = with_headers(rb, c)
-        .send()
-        .await
-        .map_err(|e| AiError::Http(redact(&e.to_string(), &c.api_key)))?;
-    parse_response(c.info.kind, &read(resp, &c.api_key).await?, estimate)
+    let body = post_json(&client(), c, request_body(c, p)).await?;
+    parse_response(c.info.kind, &body, estimate)
 }
 
 /// A conversation: `turns` are (`"user"` | `"assistant"`, text). Anthropic and OpenAI-compatible
 /// bodies differ only in where the system prompt goes.
 pub fn request_body_chat(c: &Creds, system: &str, turns: &[(&str, &str)], max_tokens: u64) -> Value {
+    let mut body = request_body_chat_plain(c, system, turns, max_tokens);
+    thinking_off(c, &mut body);
+    body
+}
+
+fn request_body_chat_plain(c: &Creds, system: &str, turns: &[(&str, &str)], max_tokens: u64) -> Value {
     let msgs: Vec<Value> = turns.iter().map(|(r, t)| json!({ "role": r, "content": t })).collect();
     match c.info.kind {
         Kind::Anthropic => json!({
@@ -504,16 +552,14 @@ pub fn request_body_chat(c: &Creds, system: &str, turns: &[(&str, &str)], max_to
     }
 }
 
-/// One chat request with a conversation (60 s: answers are longer than the one-line verdicts).
+/// One chat request with a conversation (120 s: answers are longer than the one-line verdicts, and some providers are slow).
 /// Returns (text, tokens, cut off by the token limit).
 pub async fn send_chat_turns(c: &Creds, system: &str, turns: &[(&str, &str)], max_tokens: u64, estimate: u64) -> Result<(String, u64, bool), AiError> {
     if c.model.is_empty() {
         return Err(AiError::ModelRequired);
     }
-    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60)).build().unwrap_or_default();
-    let rb = http.post(chat_url(c)).json(&request_body_chat(c, system, turns, max_tokens));
-    let resp = with_headers(rb, c).send().await.map_err(|e| AiError::Http(redact(&e.to_string(), &c.api_key)))?;
-    let body = read(resp, &c.api_key).await?;
+    let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(120)).build().unwrap_or_default();
+    let body = post_json(&http, c, request_body_chat(c, system, turns, max_tokens)).await?;
     let (text, tokens) = parse_response(c.info.kind, &body, estimate)?;
     Ok((text, tokens, is_truncated(c.info.kind, &body)))
 }
@@ -732,6 +778,63 @@ mod tests {
         let gemini = json!({"models":[{"name":"models/gemini-x"},{"name":"models/gemini-a"}]});
         assert_eq!(parse_model_list(&gemini), vec!["gemini-a", "gemini-x"]);
         assert!(parse_model_list(&json!({"error":"x"})).is_empty());
+    }
+
+    fn creds_for(provider: &str, base_url: String) -> Creds {
+        Creds { info: get(provider).unwrap(), api_key: "k-12345678".into(), model: "m".into(), base_url }
+    }
+
+    #[test]
+    fn only_gemini_gets_thinking_turned_off() {
+        let turns = [("user", "hi")];
+        let g = request_body_chat(&creds_for("gemini", "http://x/v1".into()), "sys", &turns, 100);
+        assert_eq!(g["reasoning_effort"], "none", "Gemini 3 thinks for minutes by default");
+        let probe = Prompt { system: "s".into(), user: "u".into() };
+        assert_eq!(request_body(&creds_for("gemini", "http://x/v1".into()), &probe)["reasoning_effort"], "none");
+        for other in ["openai", "groq", "anthropic", "custom"] {
+            let b = request_body_chat(&creds_for(other, "http://x/v1".into()), "sys", &turns, 100);
+            assert!(b.get("reasoning_effort").is_none(), "{other} must not get a setting it never asked for");
+        }
+    }
+
+    /// Serves `replies` in order, one per connection, and returns the request bodies it saw.
+    fn serve_seq(replies: Vec<(u16, &'static str)>) -> (String, std::sync::mpsc::Receiver<String>) {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}/v1", l.local_addr().unwrap().port());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for (status, body) in replies {
+                let Ok((mut s, _)) = l.accept() else { return };
+                let mut buf = vec![0u8; 65536];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let _ = s.write_all(format!("HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()).as_bytes());
+            }
+        });
+        (url, rx)
+    }
+
+    #[tokio::test]
+    async fn a_model_that_refuses_the_thinking_setting_is_asked_again_without_it() {
+        let ok = r#"{"choices":[{"message":{"content":"fine"},"finish_reason":"stop"}],"usage":{"total_tokens":9}}"#;
+        let (url, seen) = serve_seq(vec![(400, r#"{"error":{"message":"Budget 0 is invalid. This model only works in thinking mode."}}"#), (200, ok)]);
+        let c = creds_for("gemini", url);
+        let (text, tokens, cut) = send_chat_turns(&c, "sys", &[("user", "hi")], 100, 5).await.unwrap();
+        assert_eq!((text.as_str(), tokens, cut), ("fine", 9, false));
+        let first = seen.recv().unwrap();
+        let second = seen.recv().unwrap();
+        assert!(first.contains("reasoning_effort"), "{first}");
+        assert!(!second.contains("reasoning_effort"), "the retry drops the setting: {second}");
+    }
+
+    #[tokio::test]
+    async fn an_unrelated_400_is_not_retried() {
+        let (url, seen) = serve_seq(vec![(400, r#"{"error":{"message":"API key not valid"}}"#), (200, "{}")]);
+        let c = creds_for("gemini", url);
+        let err = send_chat_turns(&c, "sys", &[("user", "hi")], 100, 5).await.unwrap_err().to_string();
+        assert!(err.contains("400"), "{err}");
+        seen.recv().unwrap();
+        assert!(seen.recv_timeout(std::time::Duration::from_millis(300)).is_err(), "no second request");
     }
 
     #[test]

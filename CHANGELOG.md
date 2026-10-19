@@ -1,5 +1,8 @@
 ﻿# Changelog
 
+## Unreleased
+- Fix: **Google Gemini 3.x timed out.** Gemini thinks for minutes by default (a one-word answer took 125 s in a real test, 5 s with thinking off), longer than the 60 s limit, so every question failed over to the next provider. Gemini requests now turn thinking off (`reasoning_effort: none`; a model that refuses it is asked again without), the chat waits up to 120 s (other requests 60 s instead of 30 s), and a timeout is reported as a timeout
+
 ## 0.6.2 — 2026-10-19
 - New: **AI Advisor chat — pick the model on the screen.** The Model list shows every provider of the chain with its models (↻ fetches a provider's list, or type a name); picking a model switches to its provider at once, the others stay behind it as backups. The choice lasts for the session. The answer cache now also depends on provider, address and model
 - New: **Settings → AI chain:** every provider has *Fetch models* and *Test connection*

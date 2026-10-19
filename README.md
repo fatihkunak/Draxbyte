@@ -16,7 +16,15 @@
 <p align="center">
   <a href="LICENSE"><img alt="Lisans: MIT" src="https://img.shields.io/badge/lisans-MIT-10B981"></a>
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2021-1A1D21">
-  <img alt="Platform" src="https://img.shields.io/badge/Windows-test%20edildi-1A1D21">
+  <img alt="Platform" src="https://img.shields.io/badge/Windows%20%7C%20macOS-1A1D21">
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest"><img alt="Son sürüm" src="https://img.shields.io/github/v/release/fatihkunak/Draxbyte?color=10B981"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-Setup.exe"><b>⬇ Windows için indir</b></a> ·
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-macos.dmg"><b>⬇ macOS için indir (.dmg)</b></a> ·
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest/download/draxbyte.exe">taşınabilir exe</a> ·
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest">tüm dosyalar</a>
 </p>
 
 <p align="center">
@@ -33,7 +41,8 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 - **Yapay zekâ isteğe bağlı.** Varsayılan **kapalı**; kapalıyken tek bir ağ isteği bile atılmaz. Açarsan her
   istek senin onayınla gider, yanıtlar yerelde önbelleğe alınır ve günlük token limiti vardır.
 - **Güvenlik önce.** Sistem klasörleri, gizli anahtarlar, kilitli ve son 24 saatte değişmiş dosyalar asla silinmez.
-- **Tek küçük dosya.** `draxbyte.exe` ~16 MB, kurulum ya da çalışma zamanı gerekmez.
+- **Küçük ve bağımsız.** ~20 MB, çalışma zamanı gerekmez. `Draxbyte-Setup.exe` adım adım kurar; istersen taşınabilir `draxbyte.exe`.
+- **Windows ve macOS.** İkisi için de hazır indirme (macOS: Intel + Apple Silicon `.dmg`).
 - **İki dil.** Türkçe ve English; sistem diline göre otomatik, Ayarlar → *Dil / Language*'dan değiştirilebilir.
 
 ## Özellikler
@@ -89,10 +98,16 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 
 ## Başlarken
 
-### Hazır exe indir (Windows)
+### İndir (her zaman en son sürüm)
 
-[En son sürümden](https://github.com/fatihkunak/Draxbyte/releases/latest) `draxbyte.exe` dosyasını indirip çalıştır.
-Windows uyarı gösterirse aşağıdaki *İmza ve SmartScreen* bölümüne bak.
+| Platform | İndirme |
+|---|---|
+| **Windows** (kurulum sihirbazı) | [`Draxbyte-Setup.exe`](https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-Setup.exe) |
+| **Windows** (taşınabilir, kurulumsuz) | [`draxbyte.exe`](https://github.com/fatihkunak/Draxbyte/releases/latest/download/draxbyte.exe) |
+| **macOS** (Intel + Apple Silicon) | [`Draxbyte-macos.dmg`](https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-macos.dmg) |
+
+Bağlantılar her zaman [en son sürüme](https://github.com/fatihkunak/Draxbyte/releases/latest) gider. Doğrulama için aynı sayfadaki `SHA256SUMS.txt`.
+Windows uyarı gösterirse aşağıdaki *İmza ve SmartScreen* bölümüne, macOS'ta ilk açılış için *Platformlar* bölümüne bak.
 
 ### Kaynaktan derle (Windows)
 
@@ -143,6 +158,13 @@ Ayrıntılı anlatım: **[docs/KULLANIM.md](docs/KULLANIM.md)**.
 Ayarlar → **AI analizi**. Bir sağlayıcı seç, anahtarını gir, **Modelleri getir** ile sağlayıcının gerçek model
 listesini çek (token harcamaz), birini seç, **Bağlantıyı test et**.
 
+**AI Danışman:** soldaki menüde sohbet + tek tıkla "AI rapor". Yalnızca öneri verir, hiçbir şey silmez. Ayarlar → AI'da
+birden çok sağlayıcıyı **yedekleme zinciri** olarak sıralarsın: her istek birincilden başlar; ağ hatası, zaman aşımı,
+kota (429), geçersiz anahtar (401), sunucu hatası (5xx) ya da bozuk yanıtta sıradakine geçer ve cevabın altında kimin neden
+yanıt vermediği yazar. Zincirde her sağlayıcı yalnızca kendi anahtarını alır (`DRAXBYTE_API_KEY_<SAĞLAYICI>`, ör.
+`DRAXBYTE_API_KEY_OPENAI`); genel `DRAXBYTE_API_KEY` zincirde kullanılmaz. İlk kullanımda onay istenir, gidecek özet
+önizlenir, dosya içeriği asla gitmez, sohbet yalnızca bellekte durur.
+
 Desteklenen sağlayıcılar: **Ollama** ve **LM Studio** (yerel, anahtarsız, sıfır maliyet) · Google Gemini · Groq ·
 OpenRouter · NVIDIA NIM · Mistral · Anthropic · OpenAI · Kimi · xAI · EVREN · Alibaba · herhangi bir OpenAI uyumlu
 özel adres.
@@ -176,7 +198,8 @@ draxbyte memory [--trim]                               # bellek kullanımı (Win
 draxbyte startup [--disable AD | --enable AD]          # Windows'la açılanlar
 draxbyte dupes [YOLLAR...] [--min-size-mb N]           # kopya dosyalar (kuru çalıştırma)
 draxbyte dupes [YOLLAR...] --apply [--keep oldest|newest|shortest] [--permanent]   # fazla kopyaları kaldır
-draxbyte map [YOL] [--depth N] [--limit N]             # metin disk haritası: en büyük klasörler/dosyalar
+draxbyte map [YOL] [--depth N] [--limit N]             # metin disk haritası: en büyük klasörler/dosyalar
+draxbyte optimize [--apply] [--docker-parts ...] [--docker-compact]  # analiz et, sonra temizle (--apply yoksa kuru çalıştırma); --docker-parts build,dangling,networks,stopped,images,volumes; --docker-compact Docker diskini küçültür (Windows)
 ```
 
 Argümansız çalıştırırsan arayüz açılır. `DRAXBYTE_HOME=<klasör>` ile ayar/veri klasörünü değiştirebilirsin

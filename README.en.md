@@ -12,8 +12,16 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-10B981"></a>
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2021-1A1D21">
-  <img alt="Platform" src="https://img.shields.io/badge/Windows-tested-1A1D21">
+  <img alt="Platform" src="https://img.shields.io/badge/Windows%20%7C%20macOS-1A1D21">
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/fatihkunak/Draxbyte?color=10B981"></a>
   <img alt="Languages" src="https://img.shields.io/badge/UI-English%20%7C%20T%C3%BCrk%C3%A7e-1A1D21">
+</p>
+
+<p align="center">
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-Setup.exe"><b>⬇ Download for Windows</b></a> ·
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-macos.dmg"><b>⬇ Download for macOS (.dmg)</b></a> ·
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest/download/draxbyte.exe">portable exe</a> ·
+  <a href="https://github.com/fatihkunak/Draxbyte/releases/latest">all files</a>
 </p>
 
 <p align="center">
@@ -30,7 +38,8 @@ Deleted items go to the Recycle Bin by default and can be restored.
 - **AI is optional.** It is **off by default**; while it is off, not a single network request is made. If you turn
   it on, every request needs your click, answers are cached locally, and there is a daily token limit.
 - **Safety first.** System folders, secrets, locked files and files changed in the last 24 hours are never deleted.
-- **One small file.** `draxbyte.exe` is about 16 MB; no installer or runtime needed.
+- **Small and self-contained.** About 20 MB, no runtime needed. `Draxbyte-Setup.exe` installs step by step, or use the portable `draxbyte.exe`.
+- **Windows and macOS.** Ready-made downloads for both (macOS: one `.dmg` for Intel + Apple Silicon).
 - **Two languages.** English and Türkçe, chosen automatically from your system or in Settings.
 
 ## Features
@@ -85,10 +94,16 @@ Deleted items go to the Recycle Bin by default and can be restored.
 
 ## Getting started
 
-### Download (Windows)
+### Download (always the latest release)
 
-Grab `draxbyte.exe` from the [latest release](https://github.com/fatihkunak/Draxbyte/releases/latest) and run it.
-See [Signing](#signing-and-smartscreen) if Windows shows a warning.
+| Platform | Download |
+|---|---|
+| **Windows** (install wizard) | [`Draxbyte-Setup.exe`](https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-Setup.exe) |
+| **Windows** (portable, no install) | [`draxbyte.exe`](https://github.com/fatihkunak/Draxbyte/releases/latest/download/draxbyte.exe) |
+| **macOS** (Intel + Apple Silicon) | [`Draxbyte-macos.dmg`](https://github.com/fatihkunak/Draxbyte/releases/latest/download/Draxbyte-macos.dmg) |
+
+These links always point to the [latest release](https://github.com/fatihkunak/Draxbyte/releases/latest); verify with `SHA256SUMS.txt` on the same page.
+See [Signing](#signing-and-smartscreen) if Windows shows a warning, and [Platforms](#platforms) for the first launch on macOS.
 
 ### Build from source
 
@@ -137,6 +152,13 @@ Folders such as `node_modules`, `build`, `target` are counted as **one item**, s
 Settings → **AI analysis**. Pick a provider, enter its key, press **Fetch models** to list the models the provider
 really offers (costs no tokens), choose one, then **Test connection**.
 
+**AI Advisor:** a chat and a one-click "AI report" in the left menu. It only advises, never deletes. In Settings → AI you can
+order several providers as a **failover chain**: every request starts with the primary and moves to the next on a network
+error, timeout, rate limit (429), bad key (401), server error (5xx) or unreadable answer; the answer shows who failed and why.
+In a chain each provider only gets its own key (`DRAXBYTE_API_KEY_<PROVIDER>`, e.g. `DRAXBYTE_API_KEY_OPENAI`); the shared
+`DRAXBYTE_API_KEY` is not used there. First use asks for consent, the summary to be sent is previewed, file contents never
+leave your PC, and the chat lives in memory only.
+
 Providers: **Ollama** and **LM Studio** (local, no key, zero cost) · Google Gemini · Groq · OpenRouter · NVIDIA NIM ·
 Mistral · Anthropic · OpenAI · Kimi · xAI · EVREN · Alibaba · any OpenAI-compatible custom URL.
 
@@ -168,7 +190,8 @@ draxbyte memory [--trim]                               # memory use (Windows: --
 draxbyte startup [--disable NAME | --enable NAME]      # what starts with Windows
 draxbyte dupes [PATHS...] [--min-size-mb N]            # duplicate files (dry run)
 draxbyte dupes [PATHS...] --apply [--keep oldest|newest|shortest] [--permanent]   # remove the extra copies
-draxbyte map [PATH] [--depth N] [--limit N]            # text disk map: the biggest folders/files
+draxbyte map [PATH] [--depth N] [--limit N]            # text disk map: the biggest folders/files
+draxbyte optimize [--apply] [--docker-parts ...] [--docker-compact]  # analyse, then clean up (dry run unless --apply); --docker-parts build,dangling,networks,stopped,images,volumes; --docker-compact shrinks the Docker disk (Windows)
 ```
 
 Without arguments the GUI opens. `DRAXBYTE_HOME=<folder>` moves the config/data folder (portable use).

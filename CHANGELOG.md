@@ -6,6 +6,7 @@
 - New: **About → automatic update check** box: when ticked, Draxbyte asks GitHub for the latest version number at start-up (same option as in Settings, saved at once). Nothing is downloaded or installed by itself
 - Fix: **Memory & Startup** table: the program column is capped, so in a wide window the numbers and buttons stay next to the name
 - Fix: an AI Advisor answer cut off by the token limit (reasoning models spend part of it on thinking) is flagged, is not cached, and the limit is 3000 instead of 800. *Test connection* gives reasoning models room for their thinking
+
 Türkçe özet: AI Danışman sohbetinde sağlayıcı/model seçimi, zincirde "Modelleri getir" ve "Test", Hakkında'da açılışta otomatik güncelleme denetimi kutusu, kesilen AI yanıtı düzeltmesi, Bellek tablosu geniş pencerede toplu.
 
 ## 0.6.1 — 2026-10-19

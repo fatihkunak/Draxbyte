@@ -1,9 +1,11 @@
 ﻿# Changelog
 
-## Unreleased
+## 0.6.0 — 2026-10-19
 - New: **AI Advisor** — a chat about the last scan (what can go, how risky, how to do it) and a one-click "AI report". Several providers can be added in Settings → AI as a **failover chain**: every request starts with the primary provider and moves to the next one on a network error, timeout, rate limit, bad key, server error or unreadable answer; the answer shows who replied and who failed and why. The advisor only advises, never deletes. Off by default; the scan summary (sizes, rule names, shortened paths, never file contents) is shown before anything is sent, and every request starts with your Send click. In a chain each provider only ever gets its own key (`DRAXBYTE_API_KEY_<PROVIDER>`); the shared `DRAXBYTE_API_KEY` is not used there, so one provider's key can never reach another
 - New: **Shrink the Docker disk image** as a part of Full Optimization (Windows, WSL2 backend, administrator rights, off by default; `draxbyte optimize --docker-compact`). Docker's clean-up frees space inside its disk image only; this gives it back to Windows. It records the running containers, stops Docker, shuts WSL down, compacts the disk with diskpart, starts Docker again and starts every container that was running before, in the old order, retrying and checking at the end. Nothing inside the disk is deleted. If Docker does not stop, nothing is changed; a container that does not come back is named in the result
 - Change: the approval step lists unused Docker volumes with their sizes and marks named volumes (data you created on purpose) apart from anonymous ones
+
+Türkçe özet: AI Danışman (sohbet + AI rapor, çoklu sağlayıcı zinciri ve yedekleme, sağlayıcıya özel anahtar, varsayılan kapalı + onay), Docker disk imajını küçültme (Tam Optimizasyon'da).
 
 ## 0.5.0 — 2026-10-19
 - New: **Full Optimization wizard** (scope → read-only analysis → approval → run → result). Safe cleanup (green items only), duplicates (oldest copy stays), Docker piece by piece (build cache, untagged images, networks by default; stopped containers, unused images and volumes only when ticked, with the list shown first), Recycle Bin, memory (Windows). Nothing changes before the approval; files go to the Recycle Bin first. `draxbyte optimize` (dry run unless `--apply`)

@@ -51,6 +51,7 @@ Deleted items go to the Recycle Bin by default and can be restored.
 - 🗺️ **Disk Map** — what is taking the space? Coloured tiles sized by use (a treemap); click a folder to look inside; read-only
 - 👯 **Duplicate Files** — files with exactly the same content (size → first/last 64 KB → full SHA-256); at least one copy of every group always stays; deletion goes to the Recycle Bin
 - 🧹 **Full Optimization** — cleanup, duplicates, Docker (part by part), Recycle Bin and memory in one flow: you pick the scope, review a read-only analysis and approve; nothing changes before the approval. `draxbyte optimize`
+- 🤖 **AI Advisor** — a chat about the last scan plus a one-click AI report. Add several providers in Settings → AI as a failover chain (moves on at an error, rate limit or timeout and shows who failed and why). It only advises, never deletes; off by default, the summary to be sent is previewed, file contents never leave your PC
 - 🧙 **Install and uninstall wizard** — `Draxbyte-Setup.exe` installs step by step with the same theme and logo (Windows) / opened from the disk image it installs into Applications (macOS); uninstall is a wizard too and removes only its own files
 - 🌍 **English and Türkçe** UI, automatic or your choice
 - 📦 **One ~16 MB exe**, offline, no telemetry, MIT licensed

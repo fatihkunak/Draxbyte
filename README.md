@@ -53,6 +53,7 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 - 🗺️ **Disk Haritası** — alan neyin altında? Boyutla orantılı renkli kutular (treemap), tıklayınca klasörün içine girersin; salt okunur
 - 👯 **Kopya Dosyalar** — birebir aynı içerikli dosyalar (boyut → ilk/son 64 KB → tam SHA-256); her gruptan en az bir kopya her zaman kalır, silme Çöp Kutusu'na
 - 🧹 **Tam Optimizasyon** — temizlik, kopyalar, Docker (parça parça), Çöp Kutusu ve bellek tek akışta: kapsamı sen seçersin, salt okuma analiz sonucunu görür ve onaylarsın; onaydan önce hiçbir şey değişmez. `draxbyte optimize`
+- 🤖 **AI Danışman** — son taramayı konuşabileceğin sohbet + tek tıkla AI rapor. Ayarlar → AI'da birden çok sağlayıcıyı yedekleme zinciri olarak sıralarsın (hata/kota/zaman aşımında sıradakine geçer, kimin neden yanıt vermediği görünür). Yalnızca öneri verir, hiçbir şey silmez; varsayılan kapalı, gidecek özet önizlenir, dosya içeriği asla gitmez
 - 🧙 **Kurulum ve kaldırma sihirbazı** — `Draxbyte-Setup.exe` aynı tema ve logoyla adım adım kurar (Windows) / DMG'den açılınca Applications'a kurar (macOS); kaldırma da sihirbazdır ve yalnızca kendi dosyalarını siler
 - 🌍 **Türkçe ve English** arayüz, otomatik ya da seçimine göre
 - 📦 **Tek ~16 MB exe**, çevrimdışı, telemetri yok, MIT lisanslı

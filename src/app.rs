@@ -823,6 +823,11 @@ impl App {
             match r {
                 Ok(ChainOut::Models(list)) => {
                     self.chain_status.insert(i, (true, tf!("{} model bulundu", "{} models found", list.len())));
+                    if let (Some(e), Some(first)) = (self.cfg_draft.ai.chain.get_mut(i), list.first()) {
+                        if e.model.trim().is_empty() {
+                            e.model = first.clone();
+                        }
+                    }
                     self.chain_models.insert(i, list);
                 }
                 Ok(ChainOut::Test(m)) => {

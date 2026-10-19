@@ -415,17 +415,7 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
                 });
             let hint = info.and_then(|p| p.default_model).unwrap_or("model");
             ui.add(egui::TextEdit::singleline(&mut e.model).hint_text(hint).desired_width(150.0));
-            if let Some(list) = app.chain_models.get(&i) {
-                egui::ComboBox::from_id_salt(("chain_model", i)).width(26.0).selected_text("▾").show_ui(ui, |ui| {
-                    egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
-                        for m in list {
-                            if ui.selectable_label(*m == e.model, m).clicked() {
-                                e.model = m.clone();
-                            }
-                        }
-                    });
-                });
-            }
+
             if info.is_none_or(|p| p.needs_key) {
                 ui.add(egui::TextEdit::singleline(&mut e.api_key).password(true).hint_text(t("API anahtarı", "API key")).desired_width(170.0));
             }
@@ -435,7 +425,7 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
             if ui.small_button("▼").clicked() && i + 1 < n {
                 act = Some((i, Act::Down));
             }
-            if ui.small_button("✕").on_hover_text(t("Zincirden çıkar", "Remove from the chain")).clicked() {
+            if ui.small_button("×").on_hover_text(t("Zincirden çıkar", "Remove from the chain")).clicked() {
                 act = Some((i, Act::Remove));
             }
         });
@@ -455,6 +445,22 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
                 ui.label(RichText::new(if *ok { format!("✓ {msg}") } else { format!("✗ {msg}") }).color(if *ok { ACCENT } else { DANGER }).small());
             }
         });
+        if let Some(list) = app.chain_models.get(&i).filter(|l| !l.is_empty()) {
+            ui.horizontal(|ui| {
+                ui.add_space(24.0);
+                ui.label(RichText::new(t("Model seç", "Choose a model")).color(MUTED).small());
+                let shown = if e.model.trim().is_empty() { tf!("({} model) seç…", "choose… ({} models)", list.len()) } else { e.model.clone() };
+                egui::ComboBox::from_id_salt(("chain_model", i)).width(300.0).selected_text(shown).show_ui(ui, |ui| {
+                    egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                        for m in list {
+                            if ui.selectable_label(*m == e.model, m).clicked() {
+                                e.model = m.clone();
+                            }
+                        }
+                    });
+                });
+            });
+        }
         if info.is_some_and(|p| p.base_url_editable()) {
             ui.horizontal(|ui| {
                 ui.add_space(24.0);

@@ -467,6 +467,27 @@ fn client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
+fn is_local_url(url: &str) -> bool {
+    ["://localhost", "://127.0.0.1", "://[::1]", "://0.0.0.0"].iter().any(|p| url.contains(p))
+}
+
+/// A failed send, in words the user can act on. A refused connection to this computer almost always
+/// means the local server (Ollama, LM Studio…) is not running; the raw "error sending request" says nothing.
+fn send_error(e: &reqwest::Error, c: &Creds, url: &str) -> AiError {
+    if e.is_timeout() {
+        AiError::Http(t("zaman aşımı: sağlayıcı süre içinde yanıt vermedi", "timeout: the provider did not answer in time").to_string())
+    } else if e.is_connect() && is_local_url(url) {
+        let base = c.base_url.as_str();
+        AiError::Http(tf!(
+            "bağlanılamadı: {} adresinde hiçbir şey dinlemiyor. Yerel sunucu (Ollama, LM Studio…) açık mı?",
+            "cannot connect: nothing is listening at {}. Is the local server (Ollama, LM Studio…) running?",
+            base
+        ))
+    } else {
+        AiError::Http(redact(&e.to_string(), &c.api_key))
+    }
+}
+
 fn with_headers(mut rb: reqwest::RequestBuilder, c: &Creds) -> reqwest::RequestBuilder {
     for (k, v) in auth_headers(c) {
         rb = rb.header(k, v);
@@ -490,14 +511,9 @@ async fn read(resp: reqwest::Response, key: &str) -> Result<Value, AiError> {
 /// without it. A timeout is named as one: the raw "error sending request" says nothing.
 async fn post_json(http: &reqwest::Client, c: &Creds, mut body: Value) -> Result<Value, AiError> {
     for attempt in 0..2 {
-        let rb = with_headers(http.post(chat_url(c)).json(&body), c);
-        let resp = rb.send().await.map_err(|e| {
-            AiError::Http(if e.is_timeout() {
-                t("zaman aşımı: sağlayıcı süre içinde yanıt vermedi", "timeout: the provider did not answer in time").to_string()
-            } else {
-                redact(&e.to_string(), &c.api_key)
-            })
-        })?;
+        let url = chat_url(c);
+        let rb = with_headers(http.post(&url).json(&body), c);
+        let resp = rb.send().await.map_err(|e| send_error(&e, c, &url))?;
         match read(resp, &c.api_key).await {
             Err(AiError::Http(m)) if attempt == 0 && body.get(THINKING_OFF).is_some() && m.starts_with("400") && {
                 let l = m.to_lowercase();
@@ -570,10 +586,10 @@ pub async fn list_models(c: &Creds) -> Result<Vec<String>, AiError> {
         Kind::Anthropic => format!("{}/models?limit=100", c.base_url),
         Kind::OpenAiCompat => format!("{}/models", c.base_url),
     };
-    let resp = with_headers(client().get(url), c)
+    let resp = with_headers(client().get(&url), c)
         .send()
         .await
-        .map_err(|e| AiError::Http(redact(&e.to_string(), &c.api_key)))?;
+        .map_err(|e| send_error(&e, c, &url))?;
     Ok(parse_model_list(&read(resp, &c.api_key).await?))
 }
 
@@ -782,6 +798,18 @@ mod tests {
 
     fn creds_for(provider: &str, base_url: String) -> Creds {
         Creds { info: get(provider).unwrap(), api_key: "k-12345678".into(), model: "m".into(), base_url }
+    }
+
+    #[tokio::test]
+    async fn a_local_server_that_is_not_running_is_named_as_such() {
+        // nothing listens on port 9
+        let c = creds_for("ollama", "http://127.0.0.1:9/v1".into());
+        let err = list_models(&c).await.unwrap_err().to_string();
+        assert!(err.contains("127.0.0.1:9") && (err.contains("dinlemiyor") || err.contains("listening")), "{err}");
+        assert!(!err.contains("error sending request"), "{err}");
+        let err = send_chat_turns(&c, "s", &[("user", "hi")], 10, 5).await.unwrap_err().to_string();
+        assert!(err.contains("127.0.0.1:9") && !err.contains("error sending request"), "{err}");
+        assert!(is_local_url("http://localhost:11434/v1") && !is_local_url("https://api.openai.com/v1"));
     }
 
     #[test]

@@ -190,13 +190,14 @@ impl Default for CleanupConfig {
 }
 
 impl AiConfig {
-    /// Environment variable wins, then the key stored for the selected provider,
-    /// then the legacy single key.
+    /// Environment variable wins (the provider's own `DRAXBYTE_API_KEY_<PROVIDER>`, then the general
+    /// `DRAXBYTE_API_KEY`), then the key stored for the selected provider, then the legacy single key.
     pub fn resolved_api_key(&self) -> Option<String> {
         let nonempty = |k: &str| Some(k.trim().to_string()).filter(|k| !k.is_empty());
-        std::env::var(API_KEY_ENV)
+        std::env::var(provider_key_env(&self.provider))
             .ok()
             .and_then(|k| nonempty(&k))
+            .or_else(|| std::env::var(API_KEY_ENV).ok().and_then(|k| nonempty(&k)))
             .or_else(|| self.api_keys.get(&self.provider).and_then(|k| nonempty(k)))
             .or_else(|| nonempty(&self.api_key))
     }
@@ -322,6 +323,16 @@ mod tests {
         // the disabled middle entry is skipped, the order of the others is kept
         let t = back.ai.advisor_targets();
         assert_eq!(t.iter().map(|x| x.provider.as_str()).collect::<Vec<_>>(), vec!["groq", "ollama"]);
+    }
+
+    #[test]
+    fn the_single_provider_reads_its_own_environment_variable_first() {
+        let mut c = AiConfig { provider: "zz-single-test".into(), ..AiConfig::default() };
+        c.api_keys.insert("zz-single-test".into(), "stored".into());
+        assert_eq!(c.resolved_api_key().as_deref(), Some("stored"));
+        std::env::set_var("DRAXBYTE_API_KEY_ZZ_SINGLE_TEST", "from-own-env");
+        assert_eq!(c.resolved_api_key().as_deref(), Some("from-own-env"), "DRAXBYTE_API_KEY_<PROVIDER> works without a chain too");
+        std::env::remove_var("DRAXBYTE_API_KEY_ZZ_SINGLE_TEST");
     }
 
     #[test]

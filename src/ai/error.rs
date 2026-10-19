@@ -40,8 +40,8 @@ impl fmt::Display for AiError {
                 "pick a model for this provider (use \"Fetch models\" to get the list)".to_string()
             ),
             AiError::NoApiKey => tr!(
-                "API anahtarı yok (DRAXBYTE_API_KEY ortam değişkeni ya da ayarlar)".to_string(),
-                "no API key (DRAXBYTE_API_KEY environment variable or Settings)".to_string()
+                "API anahtarı yok (Ayarlar'dan gir ya da DRAXBYTE_API_KEY_<SAĞLAYICI> / DRAXBYTE_API_KEY ortam değişkenini ayarla)".to_string(),
+                "no API key (enter it in Settings or set the DRAXBYTE_API_KEY_<PROVIDER> / DRAXBYTE_API_KEY environment variable)".to_string()
             ),
             AiError::LimitReached { used, limit } => tr!(
                 format!("günlük token limiti doldu ({used}/{limit}); AI bugün devre dışı"),

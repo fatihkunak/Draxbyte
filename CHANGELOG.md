@@ -1,7 +1,11 @@
 ﻿# Changelog
 
-## Unreleased
+## 0.6.3 — 2026-10-19
 - Fix: **Google Gemini 3.x timed out.** Gemini thinks for minutes by default (a one-word answer took 125 s in a real test, 5 s with thinking off), longer than the 60 s limit, so every question failed over to the next provider. Gemini requests now turn thinking off (`reasoning_effort: none`; a model that refuses it is asked again without), the chat waits up to 120 s (other requests 60 s instead of 30 s), and a timeout is reported as a timeout
+- Fix: **AI Advisor answers show their Markdown** (bold, italic, `code`, bullets, headings) instead of raw asterisks
+- Fix: with a single provider (no chain) the provider's own `DRAXBYTE_API_KEY_<PROVIDER>` environment variable now works too, as it already did in a chain; the "no API key" message names both variables
+
+Türkçe özet: Google Gemini 3.x zaman aşımı düzeltildi (düşünme kapalı, sohbet 120 sn), AI Danışman cevapları Markdown olarak biçimli, tek sağlayıcıda `DRAXBYTE_API_KEY_<SAĞLAYICI>` ortam değişkeni de çalışıyor.
 
 ## 0.6.2 — 2026-10-19
 - New: **AI Advisor chat — pick the model on the screen.** The Model list shows every provider of the chain with its models (↻ fetches a provider's list, or type a name); picking a model switches to its provider at once, the others stay behind it as backups. The choice lasts for the session. The answer cache now also depends on provider, address and model

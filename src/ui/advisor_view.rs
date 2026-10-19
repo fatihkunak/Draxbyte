@@ -3,12 +3,121 @@
 //! nothing is sent until the user agrees and presses send.
 
 use super::widgets::{card, heading, primary_button};
-use super::{ACCENT, ACCENT_DIM, DANGER, MUTED, WARN};
+use super::{bold, ACCENT, ACCENT_DIM, DANGER, MUTED, WARN};
 use crate::app::{App, View};
 use draxbyte::ai::advisor::Role;
 use draxbyte::i18n::t;
 use draxbyte::tf;
 use egui::RichText;
+
+/// One styled piece of a line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Run {
+    text: String,
+    bold: bool,
+    italic: bool,
+    code: bool,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct MdLine {
+    heading: bool,
+    /// Indent and bullet that start the line.
+    prefix: String,
+    runs: Vec<Run>,
+}
+
+/// One line of an answer: `**bold**`, `*italic*`, `` `code` ``, `#` headings, `-`/`*` bullets.
+/// Models answer in Markdown; shown raw it is full of asterisks. Only the text is styled, nothing is fetched or run.
+fn md_parse(line: &str) -> MdLine {
+    let indent = line.len() - line.trim_start().len();
+    let mut rest = line.trim_start();
+    let mut out = MdLine::default();
+    if rest.starts_with('#') {
+        let t = rest.trim_start_matches('#');
+        if t.starts_with(' ') {
+            out.heading = true;
+            rest = t.trim_start();
+        }
+    } else if let Some(r) = rest.strip_prefix("* ").or_else(|| rest.strip_prefix("- ")).or_else(|| rest.strip_prefix("• ")) {
+        out.prefix = format!("{}• ", " ".repeat(indent.min(8)));
+        rest = r;
+    } else if indent > 0 {
+        out.prefix = " ".repeat(indent.min(8));
+    }
+    let (mut b, mut i, mut c) = (false, false, false);
+    let mut cur = String::new();
+    let flush = |runs: &mut Vec<Run>, cur: &mut String, b: bool, i: bool, c: bool| {
+        if !cur.is_empty() {
+            runs.push(Run { text: std::mem::take(cur), bold: b, italic: i, code: c });
+        }
+    };
+    let chars: Vec<char> = rest.chars().collect();
+    let mut k = 0;
+    while k < chars.len() {
+        let ch = chars[k];
+        let next = chars.get(k + 1).copied();
+        if ch == '`' {
+            flush(&mut out.runs, &mut cur, b, i, c);
+            c = !c;
+        } else if c {
+            cur.push(ch);
+        } else if ch == '*' && next == Some('*') {
+            flush(&mut out.runs, &mut cur, b, i, c);
+            b = !b;
+            k += 1;
+        } else if ch == '*' && (i || next.is_some_and(|n| !n.is_whitespace())) {
+            flush(&mut out.runs, &mut cur, b, i, c);
+            i = !i;
+        } else {
+            cur.push(ch);
+        }
+        k += 1;
+    }
+    flush(&mut out.runs, &mut cur, b, i, c);
+    out
+}
+
+fn markdown_job(line: &str, width: f32, ui: &egui::Ui) -> egui::text::LayoutJob {
+    use egui::{text::LayoutJob, Color32, FontId, TextFormat, TextStyle};
+    let size = ui.text_style_height(&TextStyle::Body);
+    let color = ui.visuals().text_color();
+    let md = md_parse(line);
+    let head = if md.heading { size + 2.0 } else { size };
+    let mut job = LayoutJob::default();
+    job.wrap.max_width = width;
+    if !md.prefix.is_empty() {
+        job.append(&md.prefix, 0.0, TextFormat { font_id: FontId::proportional(size), color, ..Default::default() });
+    }
+    for r in &md.runs {
+        let font = if r.code {
+            FontId::monospace(size - 1.0)
+        } else if r.bold || md.heading {
+            bold(head)
+        } else {
+            FontId::proportional(size)
+        };
+        let mut f = TextFormat { font_id: font, color, italics: r.italic && !r.code, ..Default::default() };
+        if r.code {
+            f.background = Color32::from_white_alpha(18);
+        }
+        job.append(&r.text, 0.0, f);
+    }
+    job
+}
+
+/// An answer, line by line (see `markdown_job`).
+fn markdown(ui: &mut egui::Ui, text: &str) {
+    let width = ui.available_width();
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            ui.add_space(6.0);
+        } else {
+            let job = markdown_job(line, width, ui);
+            ui.add(egui::Label::new(job).selectable(true));
+        }
+    }
+}
 
 fn bubble(ui: &mut egui::Ui, fill: egui::Color32, add: impl FnOnce(&mut egui::Ui)) {
     egui::Frame::new().fill(fill).corner_radius(10).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
@@ -189,7 +298,11 @@ pub fn advisor(app: &mut App, ui: &mut egui::Ui) {
                         ui.label(RichText::new(&m.meta).color(MUTED).small());
                     }
                 });
-                ui.add(egui::Label::new(m.text.as_str()).selectable(true));
+                if m.role == Role::Assistant && !m.error {
+                    markdown(ui, &m.text);
+                } else {
+                    ui.add(egui::Label::new(m.text.as_str()).selectable(true));
+                }
                 if m.role == Role::Assistant && !m.error && ui.small_button(t("Kopyala", "Copy")).clicked() {
                     ui.ctx().copy_text(m.text.clone());
                 }
@@ -226,4 +339,43 @@ pub fn advisor(app: &mut App, ui: &mut egui::Ui) {
             app.adv.msgs.clear();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plain(l: &MdLine) -> String {
+        l.runs.iter().map(|r| r.text.as_str()).collect()
+    }
+
+    #[test]
+    fn bold_italic_and_code_lose_their_markers() {
+        let l = md_parse("1. **`node_modules` (612 MB):** costs *a few minutes* and `npm install`");
+        assert_eq!(plain(&l), "1. node_modules (612 MB): costs a few minutes and npm install");
+        assert!(l.runs.iter().any(|r| r.bold && r.code && r.text == "node_modules"), "{:?}", l.runs);
+        assert!(l.runs.iter().any(|r| r.italic && r.text == "a few minutes"));
+        assert!(l.runs.iter().any(|r| r.code && !r.bold && r.text == "npm install"));
+    }
+
+    #[test]
+    fn bullets_headings_and_indent() {
+        let b = md_parse("   * **Risk:** low");
+        assert_eq!(b.prefix, "   • ");
+        assert_eq!(plain(&b), "Risk: low");
+        let h = md_parse("## Plan");
+        assert!(h.heading && plain(&h) == "Plan");
+        assert_eq!(md_parse("not # a heading").heading, false);
+    }
+
+    #[test]
+    fn stray_or_literal_asterisks_do_not_swallow_text() {
+        // a multiplication sign and an unmatched marker stay readable; the formatting never leaks into the next line
+        assert_eq!(plain(&md_parse("3 * 4 = 12")), "3 * 4 = 12");
+        let l = md_parse("**never closed");
+        assert_eq!(plain(&l), "never closed");
+        assert_eq!(plain(&md_parse("next line")), "next line");
+        // inside code, asterisks are literal
+        assert_eq!(plain(&md_parse("`a ** b`")), "a ** b");
+    }
 }

@@ -1,8 +1,10 @@
 ﻿# Changelog
 
-## Unreleased
+## 0.6.4 — 2026-10-19
 - Fix: **Settings → AI chain: the fetched model list was almost invisible** (a tiny box next to the model field). It is now a clear *Choose a model* list under the row, and an empty model field takes the first model of the list (one local model is the common case). The *remove* button of a chain row shows a proper ×
 - Fix: a refused connection to this computer says *nothing is listening at <address> — is the local server (Ollama, LM Studio…) running?* instead of "error sending request"
+
+Türkçe özet: Ayarlar → AI zincirinde model listesi artık belirgin ("Model seç"), boş model alanına ilk model otomatik yazılıyor; yerel sunucu kapalıysa "orada hiçbir şey dinlemiyor, Ollama / LM Studio açık mı?" deniyor.
 
 ## 0.6.3 — 2026-10-19
 - Fix: **Google Gemini 3.x timed out.** Gemini thinks for minutes by default (a one-word answer took 125 s in a real test, 5 s with thinking off), longer than the 60 s limit, so every question failed over to the next provider. Gemini requests now turn thinking off (`reasoning_effort: none`; a model that refuses it is asked again without), the chat waits up to 120 s (other requests 60 s instead of 30 s), and a timeout is reported as a timeout

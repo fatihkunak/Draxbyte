@@ -104,6 +104,12 @@ pub struct BinCard {
     pub freed: Option<u64>,
 }
 
+/// Result of a per-provider action in the Settings chain.
+pub enum ChainOut {
+    Models(Vec<String>),
+    Test(String),
+}
+
 pub struct App {
     pub cfg: Config,
     pub cfg_draft: Config,
@@ -145,6 +151,10 @@ pub struct App {
     pub test_job: Option<Receiver<Result<String, String>>>,
     pub test_status: Option<(bool, String)>,
     pub model_filter: String,
+    /// Settings → AI chain: per entry (by position) the fetched models, the last result and the running jobs.
+    pub chain_models: std::collections::HashMap<usize, Vec<String>>,
+    pub chain_status: std::collections::HashMap<usize, (bool, String)>,
+    pub chain_jobs: Vec<(usize, Receiver<Result<ChainOut, String>>)>,
 
     pub bin: BinCard,
     pub opt: crate::optimize::OptState,
@@ -266,6 +276,9 @@ impl App {
             test_job: None,
             test_status: None,
             model_filter: String::new(),
+            chain_models: Default::default(),
+            chain_status: Default::default(),
+            chain_jobs: Vec::new(),
             bin: BinCard::default(),
             opt: Default::default(),
             map: Default::default(),
@@ -629,6 +642,50 @@ impl App {
         self.test_status = None;
     }
 
+    /// Credentials of one chain entry as typed in Settings (its own key only, like the advisor does).
+    fn chain_creds(&self, idx: usize) -> Result<draxbyte::ai::providers::Creds, String> {
+        let ai = &self.cfg_draft.ai;
+        let e = ai.chain.get(idx).ok_or_else(|| "?".to_string())?;
+        let view = draxbyte::config::AiConfig { provider: e.provider.clone(), base_url: e.base_url.clone(), model: e.model.clone(), ..Default::default() };
+        draxbyte::ai::providers::resolve_with_key(&view, ai.chain_key(e)).map_err(|e| e.to_string())
+    }
+
+    /// A chain entry's model list (`fetch`) or a tiny real request (`!fetch`), started by the user's click.
+    pub fn chain_job(&mut self, idx: usize, fetch: bool, ctx: &egui::Context) {
+        if self.chain_jobs.iter().any(|(i, _)| *i == idx) {
+            return;
+        }
+        let creds = match self.chain_creds(idx) {
+            Ok(c) => c,
+            Err(e) => {
+                self.chain_status.insert(idx, (false, e));
+                return;
+            }
+        };
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        self.rt.spawn(async move {
+            let r = if fetch {
+                draxbyte::ai::providers::list_models(&creds).await.map(ChainOut::Models)
+            } else {
+                draxbyte::ai::providers::check(&creds).await.map(|(ms, tok)| {
+                    ChainOut::Test(tf!("Bağlantı tamam · {ms} ms · {tok} token", "Connection OK · {ms} ms · {tok} tokens"))
+                })
+            };
+            let _ = tx.send(r.map_err(|e| e.to_string()));
+            ctx.request_repaint();
+        });
+        self.chain_jobs.push((idx, rx));
+        self.chain_status.remove(&idx);
+    }
+
+    /// Entries moved or removed: positions no longer match the old results.
+    pub fn chain_forget(&mut self) {
+        self.chain_models.clear();
+        self.chain_status.clear();
+        self.chain_jobs.clear();
+    }
+
     pub fn test_connection(&mut self, ctx: &egui::Context) {
         let creds = match draxbyte::ai::providers::resolve(&self.cfg_draft.ai) {
             Ok(c) => c,
@@ -750,6 +807,28 @@ impl App {
                         self.models = list;
                     }
                     Err(e) => self.test_status = Some((false, e)),
+                }
+            }
+        }
+        let mut done: Vec<(usize, Result<ChainOut, String>)> = Vec::new();
+        self.chain_jobs.retain(|(i, rx)| match rx.try_recv() {
+            Ok(r) => {
+                done.push((*i, r));
+                false
+            }
+            Err(_) => true,
+        });
+        for (i, r) in done {
+            match r {
+                Ok(ChainOut::Models(list)) => {
+                    self.chain_status.insert(i, (true, tf!("{} model bulundu", "{} models found", list.len())));
+                    self.chain_models.insert(i, list);
+                }
+                Ok(ChainOut::Test(m)) => {
+                    self.chain_status.insert(i, (true, m));
+                }
+                Err(e) => {
+                    self.chain_status.insert(i, (false, e));
                 }
             }
         }

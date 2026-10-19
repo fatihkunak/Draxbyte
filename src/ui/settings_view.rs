@@ -394,6 +394,7 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
         .small(),
     );
     let mut act: Option<(usize, Act)> = None;
+    let mut job: Option<(usize, bool)> = None;
     let n = app.cfg_draft.ai.chain.len();
     for i in 0..n {
         let e = &mut app.cfg_draft.ai.chain[i];
@@ -414,6 +415,17 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
                 });
             let hint = info.and_then(|p| p.default_model).unwrap_or("model");
             ui.add(egui::TextEdit::singleline(&mut e.model).hint_text(hint).desired_width(150.0));
+            if let Some(list) = app.chain_models.get(&i) {
+                egui::ComboBox::from_id_salt(("chain_model", i)).width(26.0).selected_text("▾").show_ui(ui, |ui| {
+                    egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                        for m in list {
+                            if ui.selectable_label(*m == e.model, m).clicked() {
+                                e.model = m.clone();
+                            }
+                        }
+                    });
+                });
+            }
             if info.is_none_or(|p| p.needs_key) {
                 ui.add(egui::TextEdit::singleline(&mut e.api_key).password(true).hint_text(t("API anahtarı", "API key")).desired_width(170.0));
             }
@@ -427,6 +439,22 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
                 act = Some((i, Act::Remove));
             }
         });
+        let busy = app.chain_jobs.iter().any(|(j, _)| *j == i);
+        ui.horizontal(|ui| {
+            ui.add_space(24.0);
+            if ui.add_enabled(!busy && !e.provider.is_empty(), egui::Button::new(t("Modelleri getir", "Fetch models")).small()).clicked() {
+                job = Some((i, true));
+            }
+            if ui.add_enabled(!busy && !e.provider.is_empty(), egui::Button::new(t("Bağlantıyı test et", "Test connection")).small()).clicked() {
+                job = Some((i, false));
+            }
+            if busy {
+                ui.add(egui::Spinner::new());
+            }
+            if let Some((ok, msg)) = app.chain_status.get(&i) {
+                ui.label(RichText::new(if *ok { format!("✓ {msg}") } else { format!("✗ {msg}") }).color(if *ok { ACCENT } else { DANGER }).small());
+            }
+        });
         if info.is_some_and(|p| p.base_url_editable()) {
             ui.horizontal(|ui| {
                 ui.add_space(24.0);
@@ -437,6 +465,13 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
         if !e.provider.is_empty() {
             ui.label(RichText::new(tf!("Anahtarı ortam değişkeniyle de verebilirsin: {}", "You can also give the key as an environment variable: {}", provider_key_env(&e.provider))).color(MUTED).small());
         }
+    }
+    if let Some((i, fetch)) = job {
+        let ctx = ui.ctx().clone();
+        app.chain_job(i, fetch, &ctx);
+    }
+    if act.is_some() {
+        app.chain_forget();
     }
     if let Some((i, a)) = act {
         let c = &mut app.cfg_draft.ai.chain;
@@ -662,7 +697,7 @@ fn ai_section(app: &mut App, ui: &mut egui::Ui, want_fetch: &mut bool, want_test
     }
     ui.label(
         RichText::new(
-            t("“Bağlantıyı test et” küçük bir gerçek istek atar (~30 token, günlük sayaca işlenir).", "“Test connection” sends one small real request (~30 tokens, counted in the daily total)."),
+            t("“Bağlantıyı test et” küçük bir gerçek istek atar (birkaç token; düşünen modellerde birkaç yüz, günlük sayaca işlenir).", "“Test connection” sends one small real request (a few tokens; a few hundred for reasoning models; counted in the daily total)."),
         )
         .color(MUTED)
         .small(),

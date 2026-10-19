@@ -395,6 +395,17 @@ pub fn parse_response(kind: Kind, v: &Value, estimate: u64) -> Result<(String, u
     Ok((text, tokens.filter(|t| *t > 0).unwrap_or(estimate)))
 }
 
+/// True when the provider stopped because the answer hit the token limit (OpenAI-style
+/// `finish_reason: "length"`, Anthropic `stop_reason: "max_tokens"`). Reasoning models spend
+/// part of the limit on thinking, so a short limit cuts the visible answer mid-sentence.
+pub fn is_truncated(kind: Kind, v: &Value) -> bool {
+    let reason = match kind {
+        Kind::Anthropic => v.pointer("/stop_reason"),
+        Kind::OpenAiCompat => v.pointer("/choices/0/finish_reason"),
+    };
+    reason.and_then(Value::as_str).is_some_and(|r| matches!(r.to_ascii_lowercase().as_str(), "length" | "max_tokens"))
+}
+
 /// Model ids from a `GET /models` body. Handles `{data:[{id}]}` (OpenAI & most),
 /// `{models:[{name:"models/x"}]}` (Gemini-style) and `{models:[{id}]}`.
 pub fn parse_model_list(v: &Value) -> Vec<String> {
@@ -494,14 +505,17 @@ pub fn request_body_chat(c: &Creds, system: &str, turns: &[(&str, &str)], max_to
 }
 
 /// One chat request with a conversation (60 s: answers are longer than the one-line verdicts).
-pub async fn send_chat_turns(c: &Creds, system: &str, turns: &[(&str, &str)], max_tokens: u64, estimate: u64) -> Result<(String, u64), AiError> {
+/// Returns (text, tokens, cut off by the token limit).
+pub async fn send_chat_turns(c: &Creds, system: &str, turns: &[(&str, &str)], max_tokens: u64, estimate: u64) -> Result<(String, u64, bool), AiError> {
     if c.model.is_empty() {
         return Err(AiError::ModelRequired);
     }
     let http = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60)).build().unwrap_or_default();
     let rb = http.post(chat_url(c)).json(&request_body_chat(c, system, turns, max_tokens));
     let resp = with_headers(rb, c).send().await.map_err(|e| AiError::Http(redact(&e.to_string(), &c.api_key)))?;
-    parse_response(c.info.kind, &read(resp, &c.api_key).await?, estimate)
+    let body = read(resp, &c.api_key).await?;
+    let (text, tokens) = parse_response(c.info.kind, &body, estimate)?;
+    Ok((text, tokens, is_truncated(c.info.kind, &body)))
 }
 
 /// `GET {base}/models`. Costs no tokens.
@@ -524,7 +538,8 @@ pub async fn check(c: &Creds) -> Result<(u128, u64), AiError> {
         system: "Reply with the single word OK.".into(),
         user: "ping".into(),
     };
-    let (_, tokens) = send_chat(c, &probe, 30).await?;
+    // Room for a reasoning model's thinking: with 30 tokens it would return an empty answer.
+    let (_, tokens) = send_chat(c, &probe, 256).await?;
     Ok((t0.elapsed().as_millis(), tokens))
 }
 

@@ -144,7 +144,7 @@ fn processes_card(app: &mut App, ui: &mut egui::Ui) {
             .column(Column::remainder().at_least(180.0).clip(true))
             .column(Column::exact(60.0))
             .column(Column::exact(90.0))
-            .column(Column::exact(250.0))
+            .column(Column::exact(380.0))
             .vscroll(false)
             .header(22.0, |mut h| {
                 for l in [t("Program", "Program"), t("İşlem", "Procs"), t("Bellek", "Memory"), ""] {

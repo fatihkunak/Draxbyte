@@ -143,6 +143,28 @@ pub fn about(app: &mut App, ui: &mut egui::Ui) {
                     None => {}
                 }
             });
+            ui.add_space(4.0);
+            let mut auto = app.cfg.ui.check_updates;
+            if ui
+                .checkbox(&mut auto, t("Açılışta güncellemeleri otomatik denetle", "Check for updates automatically at start-up"))
+                .on_hover_text(t(
+                    "İşaretliyse Draxbyte her açılışta GitHub'a tek bir istek atıp en son sürüm numarasını sorar. Hiçbir şey kendiliğinden indirilmez ya da kurulmaz.",
+                    "When ticked, Draxbyte asks GitHub for the latest version number once at every start. Nothing is downloaded or installed by itself.",
+                ))
+                .changed()
+            {
+                // saved at once (the Settings checkbox is the same option); only this option, not other unsaved Settings edits
+                app.cfg.ui.check_updates = auto;
+                app.cfg_draft.ui.check_updates = auto;
+                match app.cfg.save(&app.cfg_path) {
+                    Ok(()) => app.toast(if auto {
+                        t("Açılışta güncelleme denetimi açıldı", "Update check at start-up is on")
+                    } else {
+                        t("Açılışta güncelleme denetimi kapatıldı", "Update check at start-up is off")
+                    }),
+                    Err(e) => app.toast(tf!("Kaydedilemedi: {e}", "Could not save: {e}")),
+                }
+            }
             let can_install = matches!(&app.update, Some(UpdateState::Available(r)) if r.setup_url.is_some());
             if cfg!(windows) && can_install {
                 ui.add_space(6.0);
@@ -150,8 +172,8 @@ pub fn about(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.label(
                 RichText::new(t(
-                    "Kontrol yalnızca GitHub'dan en son sürüm numarasını sorar (tek istek). İndirme ve kurulum yalnızca sen \"Şimdi güncelle\" dersen başlar; dosya SHA256 ve imza sertifikası doğrulanmadan çalıştırılmaz. Düğmeye basmazsan ve Ayarlar'da açmazsan ağ isteği atılmaz.",
-                    "Checking only asks GitHub for the latest version number (one request). Downloading and installing start only when you click “Update now”; the file is not run before its SHA256 and signing certificate are verified. No network request is made unless you press a button or enable the check in Settings.",
+                    "Kontrol yalnızca GitHub'dan en son sürüm numarasını sorar (tek istek). İndirme ve kurulum yalnızca sen \"Şimdi güncelle\" dersen başlar; dosya SHA256 ve imza sertifikası doğrulanmadan çalıştırılmaz. Düğmeye basmazsan ve yukarıdaki kutuyu (ya da Ayarlar'daki aynı seçeneği) işaretlemezsen ağ isteği atılmaz.",
+                    "Checking only asks GitHub for the latest version number (one request). Downloading and installing start only when you click “Update now”; the file is not run before its SHA256 and signing certificate are verified. No network request is made unless you press a button or tick the box above (or the same option in Settings).",
                 ))
                 .color(MUTED)
                 .small(),

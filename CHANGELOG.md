@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## Unreleased
+- New: **AI Advisor chat — pick the model on the screen.** The Model list shows every provider of the chain with its models (↻ fetches a provider's list, or type a name); picking a model switches to its provider at once, the others stay behind it as backups. The choice lasts for the session. The answer cache now also depends on provider, address and model
+- New: **Settings → AI chain:** every provider has *Fetch models* and *Test connection*
+- New: **About → automatic update check** box: when ticked, Draxbyte asks GitHub for the latest version number at start-up (same option as in Settings, saved at once). Nothing is downloaded or installed by itself
+- Fix: an AI Advisor answer cut off by the token limit (reasoning models spend part of it on thinking) is flagged, is not cached, and the limit is 3000 instead of 800. *Test connection* gives reasoning models room for their thinking
+
 ## 0.6.1 — 2026-10-19
 - Fix: **Memory & Startup** — the action column was too narrow, so the third button (Protect) was cut off and the "Unsaved work is lost. Sure?" confirmation did not fit. The column is wider now
 

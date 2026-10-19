@@ -80,6 +80,13 @@ Deleted items go to the Recycle Bin by default and can be restored.
 | ![Cleanup](docs/screenshots/en/cleanup.png) | ![AI settings](docs/screenshots/en/settings-ai.png) |
 | **Cleanup report** — what happened to each item, undo | **AI settings** — many providers, models fetched automatically |
 
+| | |
+|---|---|
+| ![AI Advisor](docs/screenshots/en/advisor.png) | ![Full Optimization](docs/screenshots/en/optimize.png) |
+| **AI Advisor** — talk through the scan, pick the provider and model on the screen; it only advises | **Full Optimization** — read-only analysis, nothing changes before you approve |
+| ![Disk Map](docs/screenshots/en/diskmap.png) | ![Duplicate Files](docs/screenshots/en/duplicates.png) |
+| **Disk Map** — what is taking the space? click a tile to look inside | **Duplicate Files** — at least one copy of every group stays |
+
 > Screenshots were taken with a throw-away demo folder; they contain no personal files.
 
 <details>

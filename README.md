@@ -82,6 +82,13 @@ Draxbyte, diskini tarar; **büyük ve gereksiz** dosyaları (eski log'lar, önbe
 | ![Temizlik](docs/screenshots/temizlik.png) | ![AI ayarları](docs/screenshots/ayarlar-ai.png) |
 | **Temizlik raporu** — her öğe için ne olduğu, geri alma | **AI ayarları** — çoklu sağlayıcı, modelleri otomatik getirme |
 
+| | |
+|---|---|
+| ![AI Danışman](docs/screenshots/ai-danisman.png) | ![Tam Optimizasyon](docs/screenshots/tam-optimizasyon.png) |
+| **AI Danışman** — taramayı konuş, sağlayıcıyı ve modeli ekrandan seç; yalnızca öneri verir | **Tam Optimizasyon** — salt okuma analiz, onaydan önce hiçbir şey değişmez |
+| ![Disk Haritası](docs/screenshots/disk-haritasi.png) | ![Kopya Dosyalar](docs/screenshots/kopya-dosyalar.png) |
+| **Disk Haritası** — alan neyin altında? kutuya tıkla, içine gir | **Kopya Dosyalar** — her grupta en az bir kopya kalır |
+
 > Görüntüler örnek (demo) klasörleriyle alındı; kişisel dosya içermez.
 
 <details>

@@ -18,6 +18,70 @@ fn bubble(ui: &mut egui::Ui, fill: egui::Color32, add: impl FnOnce(&mut egui::Ui
     ui.add_space(6.0);
 }
 
+/// Provider + model of the next question. Picking a model switches to its provider at once; the other
+/// providers of the chain stay behind it as backups. Lists come from the providers (`↻`), or type a name.
+fn model_picker(app: &mut App, ui: &mut egui::Ui, adv: &draxbyte::ai::advisor::Advisor, ctx: &egui::Context) {
+    let targets = adv.targets();
+    if app.adv.pick.index >= targets.len() {
+        app.adv.pick = Default::default();
+    }
+    let cur = targets[app.adv.pick.index].clone();
+    let cur_model = if app.adv.pick.model.trim().is_empty() { cur.model.clone() } else { app.adv.pick.model.clone() };
+    let shown = draxbyte::ai::advisor::label_of(&cur.provider, &cur_model);
+    let busy = app.adv.job.is_some();
+    let mut fetch: Option<usize> = None;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new(t("Model", "Model")).strong());
+        ui.add_enabled_ui(!busy, |ui| {
+            egui::ComboBox::from_id_salt("advisor_model").width(330.0).selected_text(shown).show_ui(ui, |ui| {
+                for (i, tg) in targets.iter().enumerate() {
+                    let name = draxbyte::ai::providers::get(&tg.provider).map(|p| p.display_label()).unwrap_or(tg.provider.as_str());
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(name).strong().color(ACCENT));
+                        let loading = app.adv.models_job.as_ref().is_some_and(|(j, _)| *j == i);
+                        if ui.add_enabled(!loading, egui::Button::new(t("↻ modelleri getir", "↻ fetch models")).small()).clicked() {
+                            fetch = Some(i);
+                        }
+                        if loading {
+                            ui.spinner();
+                        }
+                    });
+                    let mut list: Vec<String> = app.adv.models.get(&i).cloned().unwrap_or_default();
+                    if !tg.model.is_empty() && !list.contains(&tg.model) {
+                        list.insert(0, tg.model.clone());
+                    }
+                    if list.is_empty() {
+                        ui.label(RichText::new(t("  (model adı yaz ya da getir)", "  (type a model name or fetch)")).color(MUTED).small());
+                    }
+                    egui::ScrollArea::vertical().id_salt(("advisor_models", i)).max_height(160.0).show(ui, |ui| {
+                        for m in list {
+                            let on = app.adv.pick.index == i && cur_model == m;
+                            if ui.selectable_label(on, &m).clicked() && !on {
+                                // a model of the same or of another provider: that provider answers first from now on
+                                let model = if m == tg.model { String::new() } else { m };
+                                app.adv.pick = draxbyte::ai::advisor::Pick { index: i, model };
+                            }
+                        }
+                    });
+                    ui.separator();
+                }
+            });
+        });
+        let mut typed = cur_model.clone();
+        let r = ui.add_enabled(!busy, egui::TextEdit::singleline(&mut typed).desired_width(210.0).hint_text(t("ya da model adını yaz", "or type a model name")));
+        if r.changed() {
+            let name = typed.trim().to_string();
+            app.adv.pick.model = if name == cur.model { String::new() } else { name };
+        }
+        if let Some((ok, msg)) = &app.adv.models_note {
+            ui.label(RichText::new(if *ok { format!("✓ {msg}") } else { format!("✗ {msg}") }).color(if *ok { ACCENT } else { DANGER }).small());
+        }
+    });
+    if let Some(i) = fetch {
+        app.advisor_fetch_models(ctx, i);
+    }
+}
+
 pub fn advisor(app: &mut App, ui: &mut egui::Ui) {
     heading(
         ui,
@@ -53,8 +117,17 @@ pub fn advisor(app: &mut App, ui: &mut egui::Ui) {
         }
         return;
     }
-    let chain = labels.iter().enumerate().map(|(i, l)| format!("{}) {l}", i + 1)).collect::<Vec<_>>().join("  →  ");
-    ui.label(RichText::new(tf!("Sırayla denenir: {}", "Tried in this order: {}", chain)).color(MUTED).small());
+    model_picker(app, ui, &adv, &ctx);
+    // the picked provider (with its chosen model) first, the rest as in Settings
+    let mut order = labels.clone();
+    if app.adv.pick.index < order.len() {
+        let first = order.remove(app.adv.pick.index);
+        let tg = &adv.targets()[app.adv.pick.index];
+        let model = if app.adv.pick.model.trim().is_empty() { tg.model.clone() } else { app.adv.pick.model.clone() };
+        order.insert(0, if app.adv.pick.model.trim().is_empty() { first } else { draxbyte::ai::advisor::label_of(&tg.provider, &model) });
+    }
+    let chain = order.iter().enumerate().map(|(i, l)| format!("{}) {l}", i + 1)).collect::<Vec<_>>().join("  →  ");
+    ui.label(RichText::new(tf!("Yedek sırası: {}", "Backup order: {}", chain)).color(MUTED).small());
     ui.label(RichText::new(tf!("Bugün {} / {} token", "Today {} / {} tokens", adv.tokens_today(), adv.daily_limit())).color(MUTED).small());
     ui.add_space(6.0);
 

@@ -2,7 +2,7 @@
 //! providers, failover and prompt are in `draxbyte::ai::advisor`). Chats are kept in memory only.
 
 use crate::app::App;
-use draxbyte::ai::advisor::{self, AdvisorError, Reply, Role, Turn};
+use draxbyte::ai::advisor::{self, AdvisorError, Pick, Reply, Role, Turn};
 use draxbyte::i18n::t;
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Instant;
@@ -23,11 +23,18 @@ pub struct AdvisorState {
     pub include_context: bool,
     pub job: Option<Receiver<Result<Reply, AdvisorError>>>,
     pub started: Instant,
+    /// The provider the user picked on the chat screen (position among the advisor's targets) and the
+    /// model typed or chosen for it (empty = the one set in Settings). Session only.
+    pub pick: Pick,
+    /// Model lists fetched on the chat screen, by provider position, and the running fetch.
+    pub models: std::collections::HashMap<usize, Vec<String>>,
+    pub models_job: Option<(usize, Receiver<Result<Vec<String>, String>>)>,
+    pub models_note: Option<(bool, String)>,
 }
 
 impl Default for AdvisorState {
     fn default() -> Self {
-        Self { msgs: Vec::new(), input: String::new(), consent: false, include_context: true, job: None, started: Instant::now() }
+        Self { msgs: Vec::new(), input: String::new(), consent: false, include_context: true, job: None, started: Instant::now(), pick: Pick::default(), models: Default::default(), models_job: None, models_note: None }
     }
 }
 
@@ -41,10 +48,11 @@ impl App {
         let Some(adv) = self.advisor.clone() else { return };
         let turns: Vec<Turn> = self.adv.msgs.iter().filter(|m| !m.error).map(|m| Turn { role: m.role, text: m.text.clone() }).collect();
         let context = if include_context { self.advisor_context() } else { String::new() };
+        let pick = self.adv.pick.clone();
         let (tx, rx) = channel();
         let ctx = ctx.clone();
         self.rt.spawn(async move {
-            let _ = tx.send(adv.ask(&context, &turns).await);
+            let _ = tx.send(adv.ask_with(&context, &turns, Some(&pick)).await);
             ctx.request_repaint();
         });
         self.adv.job = Some(rx);
@@ -91,8 +99,46 @@ impl App {
         }
     }
 
+    /// The provider's model list for the picker (user click, costs no tokens).
+    pub fn advisor_fetch_models(&mut self, ctx: &egui::Context, idx: usize) {
+        let Some(adv) = self.advisor.clone() else { return };
+        let Some(tg) = adv.targets().get(idx).cloned() else { return };
+        if self.adv.models_job.is_some() {
+            return;
+        }
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        self.rt.spawn(async move {
+            let _ = tx.send(advisor::models_of(&tg).await.map_err(|e| e.to_string()));
+            ctx.request_repaint();
+        });
+        self.adv.models_job = Some((idx, rx));
+        self.adv.models_note = None;
+    }
+
+    /// Back to the Settings defaults (the advisor was rebuilt: the positions may mean other providers now).
+    pub fn advisor_reset_pick(&mut self) {
+        self.adv.pick = Pick::default();
+        self.adv.models.clear();
+        self.adv.models_job = None;
+        self.adv.models_note = None;
+    }
+
     /// Called every frame from `poll_jobs`.
     pub fn advisor_poll(&mut self) {
+        if let Some((idx, rx)) = &self.adv.models_job {
+            if let Ok(res) = rx.try_recv() {
+                let idx = *idx;
+                self.adv.models_job = None;
+                match res {
+                    Ok(list) => {
+                        self.adv.models_note = Some((true, draxbyte::tf!("{} model bulundu", "{} models found", list.len())));
+                        self.adv.models.insert(idx, list);
+                    }
+                    Err(e) => self.adv.models_note = Some((false, e)),
+                }
+            }
+        }
         let Some(rx) = &self.adv.job else { return };
         let Ok(res) = rx.try_recv() else { return };
         self.adv.job = None;

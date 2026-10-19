@@ -417,6 +417,7 @@ impl App {
     pub fn rebuild_ai(&mut self) {
         self.ai = None;
         self.advisor = None;
+        self.advisor_reset_pick();
         self.ai_error = None;
         if !self.cfg.ai.enabled {
             return;

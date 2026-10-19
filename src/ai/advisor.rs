@@ -88,7 +88,21 @@ pub struct Advisor {
     cache: Mutex<AiCache>,
 }
 
-fn label_of(provider: &str, model: &str) -> String {
+/// The user's choice on the chat screen: this provider (position among `targets()`) first, optionally
+/// with another model than the one set in Settings. The other providers stay behind it as backups.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Pick {
+    pub index: usize,
+    pub model: String,
+}
+
+/// A provider's model list (`GET /models`, costs no tokens), with that provider's own key.
+pub async fn models_of(tg: &AdvisorTarget) -> Result<Vec<String>, AiError> {
+    let view = AiConfig { provider: tg.provider.clone(), base_url: tg.base_url.clone(), model: tg.model.clone(), ..AiConfig::default() };
+    providers::list_models(&providers::resolve_with_key(&view, tg.key.clone())?).await
+}
+
+pub fn label_of(provider: &str, model: &str) -> String {
     let info = providers::get(provider);
     let name = info.map(|p| p.label).unwrap_or(provider);
     let model = Some(model.trim()).filter(|m| !m.is_empty()).or(info.and_then(|p| p.default_model)).unwrap_or("?");
@@ -142,10 +156,23 @@ impl Advisor {
     /// One answer for the conversation `turns` (the last one is the user's new message).
     /// The caller must have the user's approval; the same question is answered from the cache.
     pub async fn ask(&self, context: &str, turns: &[Turn]) -> Result<Reply, AdvisorError> {
-        let targets = self.targets();
+        self.ask_with(context, turns, None).await
+    }
+
+    /// Like `ask`, but the user's `pick` goes first (and may use another model); the rest follow in order.
+    pub async fn ask_with(&self, context: &str, turns: &[Turn], pick: Option<&Pick>) -> Result<Reply, AdvisorError> {
+        let mut targets = self.targets();
         if targets.is_empty() {
             return Err(AdvisorError::NoProvider);
         }
+        if let Some(p) = pick.filter(|p| p.index < targets.len()) {
+            let mut first = targets.remove(p.index);
+            if !p.model.trim().is_empty() {
+                first.model = p.model.trim().to_string();
+            }
+            targets.insert(0, first);
+        }
+        let route = format!("{}|{}|{}", targets[0].provider, targets[0].base_url, targets[0].model);
         let mut recent: Vec<&Turn> = turns.iter().rev().take(MAX_TURNS).collect();
         recent.reverse();
         // a conversation must start with the user's turn
@@ -154,7 +181,7 @@ impl Advisor {
         }
         let system = system_prompt(context);
         let pairs: Vec<(&str, &str)> = recent.iter().map(|t| (t.role.as_str(), t.text.as_str())).collect();
-        let key = cache_key(&system, &pairs);
+        let key = cache_key(&system, &route, &pairs);
 
         let cache_err = |e: anyhow::Error| AdvisorError::Ai(AiError::Cache(e.to_string()));
         if let Some(text) = self.cache().get(&key).map_err(cache_err)? {
@@ -206,9 +233,11 @@ impl Advisor {
     }
 }
 
-fn cache_key(system: &str, pairs: &[(&str, &str)]) -> String {
+fn cache_key(system: &str, route: &str, pairs: &[(&str, &str)]) -> String {
     let mut h = Sha256::new();
-    h.update(b"advisor-v1|");
+    h.update(b"advisor-v2|");
+    h.update(route.as_bytes());
+    h.update(b"|");
     h.update(system.as_bytes());
     for (r, t) in pairs {
         h.update(b"|");
@@ -378,6 +407,53 @@ mod tests {
         assert!(!providers::is_truncated(k, &json!({"choices":[{}]})));
         assert!(providers::is_truncated(providers::Kind::Anthropic, &json!({"stop_reason":"max_tokens"})));
         assert!(!providers::is_truncated(providers::Kind::Anthropic, &json!({"stop_reason":"end_turn"})));
+    }
+
+    /// Like `serve`, and hands back the request it received (to see which model was asked for).
+    fn serve_capture(body: &'static str) -> (u16, std::sync::mpsc::Receiver<String>) {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok((mut s, _)) = l.accept() {
+                let mut buf = [0u8; 65536];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let _ = s.write_all(format!("HTTP/1.1 200 X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()).as_bytes());
+            }
+        });
+        (port, rx)
+    }
+
+    #[tokio::test]
+    async fn the_picked_provider_goes_first_with_its_model_and_the_others_stay_behind_it() {
+        // A is unreachable: if it were tried first it would show up as a failure
+        let (pb, req) = serve_capture(OK_B);
+        let a = advisor(vec![link(1), link(pb)]);
+        let pick = Pick { index: 1, model: "my-model-7".into() };
+        let r = a.ask_with("", &ask_turn("hi"), Some(&pick)).await.unwrap();
+        assert_eq!(r.text, "answer from B");
+        assert!(r.failed_before.is_empty(), "the picked provider answered first: {:?}", r.failed_before);
+        assert!(r.label.contains("my-model-7"), "{}", r.label);
+        assert!(req.recv().unwrap().contains("\"model\":\"my-model-7\""), "the chosen model is what is requested");
+
+        // the others still back it up: the picked one is down, the first of the chain answers
+        let a = advisor(vec![link(serve(200, OK_A)), link(1)]);
+        let r = a.ask_with("", &ask_turn("hi"), Some(&Pick { index: 1, model: String::new() })).await.unwrap();
+        assert_eq!(r.text, "answer from A");
+        assert_eq!(r.failed_before.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn another_model_is_not_answered_from_the_cache_of_the_first() {
+        let a = advisor(vec![link(serve(200, OK_A)), link(serve(200, OK_B))]);
+        let first = a.ask_with("", &ask_turn("same question"), Some(&Pick::default())).await.unwrap();
+        assert_eq!(first.text, "answer from A");
+        let again = a.ask_with("", &ask_turn("same question"), Some(&Pick::default())).await.unwrap();
+        assert!(again.cached, "the same question to the same model is free");
+        let other = a.ask_with("", &ask_turn("same question"), Some(&Pick { index: 1, model: String::new() })).await.unwrap();
+        assert_eq!(other.text, "answer from B");
+        assert!(!other.cached, "a different provider is really asked");
     }
 
     #[tokio::test]

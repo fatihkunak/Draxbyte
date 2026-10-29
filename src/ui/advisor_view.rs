@@ -139,6 +139,7 @@ fn model_picker(app: &mut App, ui: &mut egui::Ui, adv: &draxbyte::ai::advisor::A
     let shown = draxbyte::ai::advisor::label_of(&cur.provider, &cur_model);
     let busy = app.adv.job.is_some();
     let mut fetch: Option<usize> = None;
+    let mut terms = false;
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(t("Model", "Model")).strong());
         ui.add_enabled_ui(!busy, |ui| {
@@ -183,9 +184,15 @@ fn model_picker(app: &mut App, ui: &mut egui::Ui, adv: &draxbyte::ai::advisor::A
             app.adv.pick.model = if name == cur.model { String::new() } else { name };
         }
         if let Some((ok, msg)) = &app.adv.models_note {
+            if !*ok && draxbyte::ai::providers::is_terms_error(msg) && ui.small_button(t("Kullanım şartlarını göster", "Show the terms of use")).clicked() {
+                terms = true;
+            }
             ui.label(RichText::new(if *ok { format!("✓ {msg}") } else { format!("✗ {msg}") }).color(if *ok { ACCENT } else { DANGER }).small());
         }
     });
+    if terms {
+        app.open_terms_advisor(ctx);
+    }
     if let Some(i) = fetch {
         app.advisor_fetch_models(ctx, i);
     }
@@ -271,6 +278,7 @@ pub fn advisor(app: &mut App, ui: &mut egui::Ui) {
 
     let busy = app.adv.job.is_some();
     let mut retry = false;
+    let mut terms = false;
     egui::ScrollArea::vertical().max_height((ui.available_height() - 190.0).max(140.0)).stick_to_bottom(true).auto_shrink([false, false]).show(ui, |ui| {
         if app.adv.msgs.is_empty() {
             ui.label(RichText::new(t("Bir soru yaz ya da hazır sorulardan birini seç:", "Write a question or pick one:")).color(MUTED));
@@ -306,6 +314,9 @@ pub fn advisor(app: &mut App, ui: &mut egui::Ui) {
                 if m.role == Role::Assistant && !m.error && ui.small_button(t("Kopyala", "Copy")).clicked() {
                     ui.ctx().copy_text(m.text.clone());
                 }
+                if m.error && draxbyte::ai::providers::is_terms_error(&m.text) && ui.button(t("Kullanım şartlarını göster", "Show the terms of use")).clicked() {
+                    terms = true;
+                }
                 if m.error && i == last && !busy && ui.small_button(t("Yeniden dene", "Try again")).clicked() {
                     retry = true;
                 }
@@ -321,6 +332,9 @@ pub fn advisor(app: &mut App, ui: &mut egui::Ui) {
     });
     if retry {
         app.advisor_retry(&ctx);
+    }
+    if terms {
+        app.open_terms_advisor(&ctx);
     }
 
     ui.add_space(4.0);

@@ -8,3 +8,4 @@ Kod: `src/ai/providers.rs`. Bağlı: [[AiClient]], [[Config]], [[Ui]].
 - İstek biçimi: OpenAI-uyumlu `chat/completions` (OpenAI'de `max_completion_tokens`, EVREN'de `X-API-Key`), Anthropic `messages` (`x-api-key` + `anthropic-version`).
 - Hata metinlerinde anahtar `***` ile maskelenir.
 - Canlı doğrulama: `tests/live_provider.rs` (`DRAXBYTE_LIVE_URL`, yerel llama-server ile geçti).
+- Kullanım şartları (EVREN): anahtar sahibi güncel şartları kabul etmeden her istek 403 verir. `is_terms_error` bunu tanır; Ayarlar'da "Kullanım şartlarını göster" düğmesi `terms_text` (`GET /v1/terms/text`) ile metni gösterir, `terms_accept` (`POST /v1/terms/accept {version}`) yalnız kullanıcı "Okudum, kabul ediyorum" düğmesine bastığında çağrılır (`app.rs` `open_terms`/`accept_terms`, `settings_view::terms_modal`).

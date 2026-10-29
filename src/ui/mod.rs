@@ -169,6 +169,7 @@ pub fn draw(app: &mut App, ui: &mut egui::Ui) {
     result_view::confirm_modal(app, ui.ctx());
     apps_view::flow_modal(app, ui.ctx());
     result_view::ai_modal(app, ui.ctx());
+    settings_view::terms_modal(app, ui.ctx());
     toast(app, ui.ctx());
 }
 

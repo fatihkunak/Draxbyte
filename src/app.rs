@@ -110,6 +110,20 @@ pub enum ChainOut {
     Test(String),
 }
 
+pub enum TermsOut {
+    Text(u64, String),
+    Accepted,
+}
+
+/// The provider's terms window: text is fetched first (reading is free), accepting is a separate click.
+pub struct TermsUi {
+    pub creds: draxbyte::ai::providers::Creds,
+    pub text: Option<(u64, String)>,
+    pub job: Option<Receiver<Result<TermsOut, String>>>,
+    pub error: Option<String>,
+    pub accepted: bool,
+}
+
 pub struct App {
     pub cfg: Config,
     pub cfg_draft: Config,
@@ -151,6 +165,8 @@ pub struct App {
     pub test_job: Option<Receiver<Result<String, String>>>,
     pub test_status: Option<(bool, String)>,
     pub model_filter: String,
+    /// Provider terms the key's owner must accept first (EVREN): window state, opened from Settings.
+    pub terms: Option<TermsUi>,
     /// Settings → AI chain: per entry (by position) the fetched models, the last result and the running jobs.
     pub chain_models: std::collections::HashMap<usize, Vec<String>>,
     pub chain_status: std::collections::HashMap<usize, (bool, String)>,
@@ -275,6 +291,7 @@ impl App {
             models_job: None,
             test_job: None,
             test_status: None,
+            terms: None,
             model_filter: String::new(),
             chain_models: Default::default(),
             chain_status: Default::default(),
@@ -643,6 +660,74 @@ impl App {
         self.test_status = None;
     }
 
+    /// Opens the terms window for the Settings provider (`chain: None`) or a chain entry and fetches the text.
+    pub fn open_terms(&mut self, chain: Option<usize>, ctx: &egui::Context) {
+        let creds = match chain {
+            None => draxbyte::ai::providers::resolve(&self.cfg_draft.ai).map_err(|e| e.to_string()),
+            Some(i) => self.chain_creds(i),
+        };
+        self.open_terms_with(creds, ctx);
+    }
+
+    /// Same for the AI Advisor's chain: the provider whose refusal is shown. The error text only says
+    /// "403 … terms", so the first provider that asks for terms (EVREN) is taken, else the picked one.
+    pub fn open_terms_advisor(&mut self, ctx: &egui::Context) {
+        let Some(adv) = self.advisor.clone() else { return };
+        let targets = adv.targets();
+        let idx = targets
+            .iter()
+            .position(|t| draxbyte::ai::providers::get(&t.provider).is_some_and(|p| p.id == "evren"))
+            .unwrap_or(self.adv.pick.index);
+        let Some(tg) = targets.get(idx) else { return };
+        let view = draxbyte::config::AiConfig { provider: tg.provider.clone(), base_url: tg.base_url.clone(), model: tg.model.clone(), ..Default::default() };
+        let creds = draxbyte::ai::providers::resolve_with_key(&view, tg.key.clone()).map_err(|e| e.to_string());
+        self.open_terms_with(creds, ctx);
+    }
+
+    fn open_terms_with(&mut self, creds: Result<draxbyte::ai::providers::Creds, String>, ctx: &egui::Context) {
+        match creds {
+            Ok(creds) => {
+                self.terms = Some(TermsUi { creds: creds.clone(), text: None, job: None, error: None, accepted: false });
+                let (tx, rx) = channel();
+                let ctx = ctx.clone();
+                self.rt.spawn(async move {
+                    let r = draxbyte::ai::providers::terms_text(&creds)
+                        .await
+                        .map(|(v, s)| TermsOut::Text(v, s))
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(r);
+                    ctx.request_repaint();
+                });
+                if let Some(t) = &mut self.terms {
+                    t.job = Some(rx);
+                }
+            }
+            Err(e) => self.toast(e),
+        }
+    }
+
+    /// Only called from the "I accept" button.
+    pub fn accept_terms(&mut self, ctx: &egui::Context) {
+        let Some(t) = &mut self.terms else { return };
+        let Some((version, _)) = t.text else { return };
+        if t.job.is_some() {
+            return;
+        }
+        let creds = t.creds.clone();
+        let (tx, rx) = channel();
+        let ctx = ctx.clone();
+        self.rt.spawn(async move {
+            let r = draxbyte::ai::providers::terms_accept(&creds, version)
+                .await
+                .map(|_| TermsOut::Accepted)
+                .map_err(|e| e.to_string());
+            let _ = tx.send(r);
+            ctx.request_repaint();
+        });
+        t.job = Some(rx);
+        t.error = None;
+    }
+
     /// Credentials of one chain entry as typed in Settings (its own key only, like the advisor does).
     fn chain_creds(&self, idx: usize) -> Result<draxbyte::ai::providers::Creds, String> {
         let ai = &self.cfg_draft.ai;
@@ -845,6 +930,20 @@ impl App {
                     Ok(m) => (true, m),
                     Err(e) => (false, e),
                 });
+            }
+        }
+        if let Some(tm) = &mut self.terms {
+            if let Some(res) = tm.job.as_ref().and_then(|rx| rx.try_recv().ok()) {
+                tm.job = None;
+                match res {
+                    Ok(TermsOut::Text(v, s)) => tm.text = Some((v, s)),
+                    Ok(TermsOut::Accepted) => {
+                        tm.accepted = true;
+                        self.test_status = Some((true, t("Şartlar kabul edildi. Bağlantıyı yeniden test et.", "Terms accepted. Test the connection again.").to_string()));
+                        self.chain_status.clear();
+                    }
+                    Err(e) => tm.error = Some(e),
+                }
             }
         }
         while let Ok((path, res)) = self.ai_rx.try_recv() {

@@ -593,6 +593,38 @@ pub async fn list_models(c: &Creds) -> Result<Vec<String>, AiError> {
     Ok(parse_model_list(&read(resp, &c.api_key).await?))
 }
 
+/// EVREN refuses every call with HTTP 403 until the key's owner has accepted the current terms.
+pub fn is_terms_error(msg: &str) -> bool {
+    let l = msg.to_lowercase();
+    l.contains("403") && (l.contains("/v1/terms") || l.contains("kullanım şartları"))
+}
+
+/// The terms a provider asks the key's owner to accept: (version, Markdown text). `GET {base}/terms/text`.
+pub async fn terms_text(c: &Creds) -> Result<(u64, String), AiError> {
+    let url = format!("{}/terms/text", c.base_url);
+    let resp = with_headers(client().get(&url), c)
+        .send()
+        .await
+        .map_err(|e| send_error(&e, c, &url))?;
+    let v = read(resp, &c.api_key).await?;
+    let version = v.get("version").and_then(Value::as_u64);
+    let text = v.get("content").and_then(Value::as_str).filter(|s| !s.trim().is_empty());
+    match (version, text) {
+        (Some(ver), Some(text)) => Ok((ver, text.to_string())),
+        _ => Err(AiError::BadResponse(redact(&v.to_string(), &c.api_key))),
+    }
+}
+
+/// Accepts terms `version` for the key's owner. Only ever called from the user's click on "I accept".
+pub async fn terms_accept(c: &Creds, version: u64) -> Result<(), AiError> {
+    let url = format!("{}/terms/accept", c.base_url);
+    let resp = with_headers(client().post(&url).json(&json!({ "version": version })), c)
+        .send()
+        .await
+        .map_err(|e| send_error(&e, c, &url))?;
+    read(resp, &c.api_key).await.map(|_| ())
+}
+
 /// A tiny real request (key + model check). Returns (milliseconds, tokens used).
 pub async fn check(c: &Creds) -> Result<(u128, u64), AiError> {
     let t0 = std::time::Instant::now();
@@ -863,6 +895,30 @@ mod tests {
         assert!(err.contains("400"), "{err}");
         seen.recv().unwrap();
         assert!(seen.recv_timeout(std::time::Duration::from_millis(300)).is_err(), "no second request");
+    }
+
+    #[test]
+    fn the_evren_terms_refusal_is_recognised() {
+        let m = r#"403 Forbidden: {"error":{"message":"kullanım şartlarının güncel sürümünü (v1) kabul etmeniz gerekiyor - metni GET /v1/terms/text ile okuyup POST /v1/terms/accept"#;
+        assert!(is_terms_error(m));
+        assert!(!is_terms_error("403 Forbidden: model not allowed"));
+        assert!(!is_terms_error("401: Geçersiz API anahtarı"));
+    }
+
+    #[tokio::test]
+    async fn terms_text_and_accept_use_the_terms_endpoints() {
+        let (url, rx) = serve_once(r##"{"version":3,"doc_path":"x.md","content":"# Şartlar"}"##);
+        let c = creds_for("evren", url);
+        assert_eq!(terms_text(&c).await.unwrap(), (3, "# Şartlar".to_string()));
+        let head = rx.recv().unwrap().to_lowercase();
+        assert!(head.starts_with("get /v1/terms/text "), "{head}");
+        assert!(head.contains("x-api-key: k-12345678") && !head.contains("authorization"), "{head}");
+
+        let (url, rx) = serve_once(r#"{"accepted_version":3,"accepted_at":"now"}"#);
+        terms_accept(&creds_for("evren", url), 3).await.unwrap();
+        let req = rx.recv().unwrap();
+        assert!(req.to_lowercase().starts_with("post /v1/terms/accept "), "{req}");
+        assert!(req.contains(r#"{"version":3}"#), "{req}");
     }
 
     #[test]

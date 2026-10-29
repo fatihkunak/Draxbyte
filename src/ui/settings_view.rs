@@ -14,6 +14,58 @@ const T_PATHS: &str = "set_paths";
 const T_EXCL: &str = "set_excl";
 const T_EXTS: &str = "set_exts";
 
+/// The provider's terms of use: the text is shown in full, and nothing is accepted until the user clicks.
+pub fn terms_modal(app: &mut App, ctx: &egui::Context) {
+    let Some(tm) = &app.terms else { return };
+    let (label, loading) = (tm.creds.info.display_label(), tm.job.is_some());
+    let mut accept = false;
+    let mut close = false;
+    #[allow(deprecated)] // needs one stable id across frames; Id::unique would change every frame
+    let id = Id::new("provider_terms");
+    let modal = egui::Modal::new(id).show(ctx, |ui| {
+        ui.set_width(560.0);
+        ui.label(RichText::new(tf!("{label} · kullanım şartları", "{label} · terms of use")).size(20.0).strong());
+        match &tm.text {
+            Some((version, text)) => {
+                ui.label(RichText::new(tf!("Sürüm {version} · kabul etmeden önce oku", "Version {version} · read before accepting")).color(MUTED));
+                egui::ScrollArea::vertical().max_height(340.0).show(ui, |ui| {
+                    ui.add(egui::Label::new(RichText::new(text).monospace().small()).wrap());
+                });
+            }
+            None if tm.error.is_none() => {
+                ui.add(egui::Spinner::new());
+            }
+            None => {}
+        }
+        if let Some(e) = &tm.error {
+            ui.label(RichText::new(format!("✗ {e}")).color(DANGER));
+        }
+        if tm.accepted {
+            ui.label(RichText::new(t("✓ Kabul edildi.", "✓ Accepted.")).color(ACCENT));
+        }
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui.button(if tm.accepted { t("Kapat", "Close") } else { t("Vazgeç", "Cancel") }).clicked() {
+                close = true;
+            }
+            if !tm.accepted && tm.text.is_some() && ui.add_enabled(!loading, primary_button(t("Okudum, kabul ediyorum", "I have read and accept"))).clicked() {
+                accept = true;
+            }
+            if loading && tm.text.is_some() {
+                ui.add(egui::Spinner::new());
+            }
+        });
+    });
+    if modal.should_close() {
+        close = true;
+    }
+    if accept {
+        app.accept_terms(ctx);
+    } else if close {
+        app.terms = None;
+    }
+}
+
 fn lines(v: &[String]) -> String {
     v.join("\n")
 }
@@ -395,6 +447,7 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
     );
     let mut act: Option<(usize, Act)> = None;
     let mut job: Option<(usize, bool)> = None;
+    let mut terms: Option<Option<usize>> = None;
     let n = app.cfg_draft.ai.chain.len();
     for i in 0..n {
         let e = &mut app.cfg_draft.ai.chain[i];
@@ -442,6 +495,10 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
                 ui.add(egui::Spinner::new());
             }
             if let Some((ok, msg)) = app.chain_status.get(&i) {
+                // the button first: a long error text would push it off the right edge of the window
+                if !*ok && providers::is_terms_error(msg) && ui.small_button(t("Kullanım şartlarını göster", "Show the terms of use")).clicked() {
+                    terms = Some(Some(i));
+                }
                 ui.label(RichText::new(if *ok { format!("✓ {msg}") } else { format!("✗ {msg}") }).color(if *ok { ACCENT } else { DANGER }).small());
             }
         });
@@ -475,6 +532,10 @@ fn chain_section(app: &mut App, ui: &mut egui::Ui) {
     if let Some((i, fetch)) = job {
         let ctx = ui.ctx().clone();
         app.chain_job(i, fetch, &ctx);
+    }
+    if let Some(which) = terms {
+        let ctx = ui.ctx().clone();
+        app.open_terms(which, &ctx);
     }
     if act.is_some() {
         app.chain_forget();
@@ -700,6 +761,10 @@ fn ai_section(app: &mut App, ui: &mut egui::Ui, want_fetch: &mut bool, want_test
             })
             .color(if *ok { ACCENT } else { DANGER }),
         );
+        if !*ok && providers::is_terms_error(msg) && ui.button(t("Kullanım şartlarını göster", "Show the terms of use")).clicked() {
+            let ctx = ui.ctx().clone();
+            app.open_terms(None, &ctx);
+        }
     }
     ui.label(
         RichText::new(

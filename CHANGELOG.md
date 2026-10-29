@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## Unreleased
+- **EVREN: terms of use.** EVREN answers 403 until the key's owner accepts its terms. Settings now shows *Show the terms of use* next to that error: it reads the text from the provider, shows it in full and sends the acceptance only when you click *I have read and accept*
+
+Türkçe özet: EVREN 403 "kullanım şartlarını kabul edin" derse Ayarlar'da "Kullanım şartlarını göster" düğmesi çıkar; metin okunur, kabul yalnız senin tıklamanla gönderilir.
+
 ## 0.6.4 — 2026-10-19
 - Fix: **Settings → AI chain: the fetched model list was almost invisible** (a tiny box next to the model field). It is now a clear *Choose a model* list under the row, and an empty model field takes the first model of the list (one local model is the common case). The *remove* button of a chain row shows a proper ×
 - Fix: a refused connection to this computer says *nothing is listening at <address> — is the local server (Ollama, LM Studio…) running?* instead of "error sending request"

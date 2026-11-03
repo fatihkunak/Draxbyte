@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b>Türkçe</b> · <a href="README.en.md">English</a> · <a href="docs/KULLANIM.md">Kullanım kılavuzu</a> · <a href="docs/USAGE.md">User guide</a> · <a href="https://github.com/fatihkunak/Draxbyte/wiki">Wiki</a>
+  <b>Türkçe</b> · <a href="README.en.md">English</a> · <a href="docs/KULLANIM.md">Kullanım kılavuzu</a> · <a href="docs/USAGE.md">User guide</a> · <a href="https://github.com/fatihkunak/Draxbyte/wiki">Wiki</a> · <a href="https://fatihgo.com/uygulamalar/draxbyte">Tanıtım sayfası</a>
 </p>
 
 <p align="center">

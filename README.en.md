@@ -6,7 +6,7 @@
 <p align="center"><b>Cleaner system. More space.</b></p>
 <p align="center">
   Local-first disk scanner and cleaner — Rust + egui, one small binary, works offline.<br>
-  <a href="README.md">Türkçe</a> · <b>English</b> · <a href="docs/USAGE.md">User guide</a> · <a href="docs/KULLANIM.md">Kullanım kılavuzu</a> · <a href="https://github.com/fatihkunak/Draxbyte/wiki">Wiki</a>
+  <a href="README.md">Türkçe</a> · <b>English</b> · <a href="docs/USAGE.md">User guide</a> · <a href="docs/KULLANIM.md">Kullanım kılavuzu</a> · <a href="https://github.com/fatihkunak/Draxbyte/wiki">Wiki</a> · <a href="https://fatihgo.com/en/apps/draxbyte">Project page</a>
 </p>
 
 <p align="center">
